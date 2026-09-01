@@ -69,8 +69,11 @@ export async function handlePasswordReset(request, env) {
     if (!row) return json({ error: 'Usuário não encontrado.' }, 404);
 
     const passwordHash = await hashPassword(password);
+
+    // Atualiza somente a coluna essencial para evitar dependência
+    // de alterações de esquema que possam não existir no D1 já provisionado.
     await env.DB.prepare(
-      'UPDATE users SET password_hash=?1,updated_at=CURRENT_TIMESTAMP WHERE id=?2'
+      'UPDATE users SET password_hash=?1 WHERE id=?2'
     ).bind(passwordHash, row.id).run();
 
     return json({ ok: true, username: row.username });
