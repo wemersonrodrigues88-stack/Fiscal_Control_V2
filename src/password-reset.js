@@ -65,30 +65,23 @@ export async function handlePasswordReset(request, env) {
       return json({ error: 'Usuário e senha válida são obrigatórios. A senha deve ter entre 12 e 128 caracteres.' }, 400);
     }
 
-    // A recuperação administrativa consulta somente a conta necessária.
-    // Não depende da tabela profiles nem de colunas opcionais de users.
+    // Recuperação administrativa independente de profiles e de colunas de auditoria.
     const row = await env.DB.prepare(
-      "SELECT id,username FROM users WHERE username=?1 AND status='active'"
+      'SELECT id,username FROM users WHERE username=?1 LIMIT 1'
     ).bind(username).first();
 
     if (!row) return json({ error: 'Usuário não encontrado.' }, 404);
 
     const passwordHash = await hashPassword(password);
 
-    // Atualiza somente password_hash para ser compatível com a estrutura
-    // efetivamente existente no D1, sem depender de updated_at.
-    const updateResult = await env.DB.prepare(
-      'UPDATE users SET password_hash=?1 WHERE id=?2'
+    // O login exige status=active; a recuperação administrativa garante a conta ativa.
+    // Não usa updated_at nem depende do objeto meta retornado pelo D1.
+    await env.DB.prepare(
+      "UPDATE users SET password_hash=?1,status='active' WHERE id=?2"
     ).bind(passwordHash, row.id).run();
 
-    if (!updateResult?.success || Number(updateResult?.meta?.changes || 0) !== 1) {
-      console.error('Password reset failed: user password was not updated.', updateResult);
-      return json({ error: 'Não foi possível salvar a nova senha.' }, 500);
-    }
-
-    // A invalidação das sessões é complementar. Se a tabela de sessões estiver
-    // ausente ou diferente em uma instalação anterior, isso não pode impedir
-    // a recuperação da senha que já foi gravada com sucesso.
+    // Sessões antigas não podem continuar válidas após uma recuperação de senha.
+    // A tabela pode variar em instalações antigas, portanto a revogação é isolada.
     try {
       await env.DB.prepare('DELETE FROM sessions WHERE user_id=?1').bind(row.id).run();
     } catch (sessionError) {
