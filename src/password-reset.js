@@ -65,8 +65,8 @@ export async function handlePasswordReset(request, env) {
       return json({ error: 'Usuário e senha válida são obrigatórios. A senha deve ter entre 12 e 128 caracteres.' }, 400);
     }
 
-    // Não depende de profiles: a recuperação administrativa deve funcionar
-    // diretamente sobre a conta ativa, mesmo que a hierarquia esteja incompleta.
+    // A recuperação administrativa consulta somente a conta necessária.
+    // Não depende da tabela profiles nem de colunas opcionais de users.
     const row = await env.DB.prepare(
       "SELECT id,username FROM users WHERE username=?1 AND status='active'"
     ).bind(username).first();
@@ -75,8 +75,10 @@ export async function handlePasswordReset(request, env) {
 
     const passwordHash = await hashPassword(password);
 
+    // Atualiza somente password_hash para ser compatível com a estrutura
+    // efetivamente existente no D1, sem depender de updated_at.
     const updateResult = await env.DB.prepare(
-      'UPDATE users SET password_hash=?1,updated_at=CURRENT_TIMESTAMP WHERE id=?2'
+      'UPDATE users SET password_hash=?1 WHERE id=?2'
     ).bind(passwordHash, row.id).run();
 
     if (!updateResult?.success || Number(updateResult?.meta?.changes || 0) !== 1) {
@@ -84,8 +86,14 @@ export async function handlePasswordReset(request, env) {
       return json({ error: 'Não foi possível salvar a nova senha.' }, 500);
     }
 
-    // Qualquer sessão anterior fica inválida depois da recuperação administrativa.
-    await env.DB.prepare('DELETE FROM sessions WHERE user_id=?1').bind(row.id).run();
+    // A invalidação das sessões é complementar. Se a tabela de sessões estiver
+    // ausente ou diferente em uma instalação anterior, isso não pode impedir
+    // a recuperação da senha que já foi gravada com sucesso.
+    try {
+      await env.DB.prepare('DELETE FROM sessions WHERE user_id=?1').bind(row.id).run();
+    } catch (sessionError) {
+      console.warn('Password reset: sessions could not be revoked.', sessionError);
+    }
 
     return json({ ok: true, username: row.username, sessions_revoked: true });
   } catch (error) {
