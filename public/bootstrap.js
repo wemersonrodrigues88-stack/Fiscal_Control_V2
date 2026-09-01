@@ -74,7 +74,7 @@ function installAccessSetup() {
       message.style.display = 'block';
       message.style.background = '#ecfdf5';
       message.style.color = '#166534';
-      panel.querySelector('#password')?.focus();
+      panel.querySelector('#setup-password')?.focus();
     } catch (error) {
       message.textContent = escapeHtml(error.message);
       message.style.display = 'block';
