@@ -42,13 +42,19 @@ export async function handlePasswordReset(request, env) {
   if (url.pathname !== '/api/auth/reset-password' || request.method !== 'POST') return null;
 
   try {
-    const configuredSecret = env.BOOTSTRAP_SECRET || '';
+    const configuredSecret = String(env.BOOTSTRAP_SECRET || '');
     const suppliedSecret = request.headers.get('X-Bootstrap-Secret') || '';
+
     if (!configuredSecret || !constantTimeEqual(
       new TextEncoder().encode(suppliedSecret),
       new TextEncoder().encode(configuredSecret)
     )) {
       return json({ error: 'Não autorizado.' }, 401);
+    }
+
+    if (!env.DB) {
+      console.error('Password reset failed: D1 binding DB is unavailable.');
+      return json({ error: 'Serviço de banco de dados indisponível.' }, 503);
     }
 
     const body = await request.json().catch(() => null);
@@ -59,24 +65,29 @@ export async function handlePasswordReset(request, env) {
       return json({ error: 'Usuário e senha válida são obrigatórios. A senha deve ter entre 12 e 128 caracteres.' }, 400);
     }
 
-    const row = await env.DB.prepare(`
-      SELECT u.id,u.username,u.name,p.name AS profile
-      FROM users u
-      JOIN profiles p ON p.id=u.profile_id
-      WHERE u.username=?1 AND u.status='active'
-    `).bind(username).first();
+    // Não depende de profiles: a recuperação administrativa deve funcionar
+    // diretamente sobre a conta ativa, mesmo que a hierarquia esteja incompleta.
+    const row = await env.DB.prepare(
+      "SELECT id,username FROM users WHERE username=?1 AND status='active'"
+    ).bind(username).first();
 
     if (!row) return json({ error: 'Usuário não encontrado.' }, 404);
 
     const passwordHash = await hashPassword(password);
 
-    // Atualiza somente a coluna essencial para evitar dependência
-    // de alterações de esquema que possam não existir no D1 já provisionado.
-    await env.DB.prepare(
-      'UPDATE users SET password_hash=?1 WHERE id=?2'
+    const updateResult = await env.DB.prepare(
+      'UPDATE users SET password_hash=?1,updated_at=CURRENT_TIMESTAMP WHERE id=?2'
     ).bind(passwordHash, row.id).run();
 
-    return json({ ok: true, username: row.username });
+    if (!updateResult?.success || Number(updateResult?.meta?.changes || 0) !== 1) {
+      console.error('Password reset failed: user password was not updated.', updateResult);
+      return json({ error: 'Não foi possível salvar a nova senha.' }, 500);
+    }
+
+    // Qualquer sessão anterior fica inválida depois da recuperação administrativa.
+    await env.DB.prepare('DELETE FROM sessions WHERE user_id=?1').bind(row.id).run();
+
+    return json({ ok: true, username: row.username, sessions_revoked: true });
   } catch (error) {
     console.error('Password reset failed:', error);
     return json({ error: 'Não foi possível configurar a senha neste momento.' }, 500);
