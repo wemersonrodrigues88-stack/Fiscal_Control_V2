@@ -56,6 +56,18 @@ CREATE TABLE IF NOT EXISTS analysts (
   FOREIGN KEY (manager_user_id) REFERENCES users(id)
 );
 
+CREATE TABLE IF NOT EXISTS team_members (
+  user_id INTEGER PRIMARY KEY,
+  seniority TEXT CHECK (seniority IS NULL OR seniority IN ('junior','pleno','senior')),
+  coordinator_user_id INTEGER,
+  manager_user_id INTEGER,
+  created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+  FOREIGN KEY (coordinator_user_id) REFERENCES users(id),
+  FOREIGN KEY (manager_user_id) REFERENCES users(id)
+);
+
 CREATE TABLE IF NOT EXISTS analyst_portfolios (
   analyst_user_id INTEGER NOT NULL,
   portfolio_id INTEGER NOT NULL,
@@ -162,6 +174,8 @@ CREATE TABLE IF NOT EXISTS sessions (
 );
 
 CREATE INDEX IF NOT EXISTS idx_users_profile ON users(profile_id);
+CREATE INDEX IF NOT EXISTS idx_team_members_coordinator ON team_members(coordinator_user_id);
+CREATE INDEX IF NOT EXISTS idx_team_members_manager ON team_members(manager_user_id);
 CREATE INDEX IF NOT EXISTS idx_obligations_responsible ON obligations(responsible_user_id);
 CREATE INDEX IF NOT EXISTS idx_obligations_due_date ON obligations(due_date);
 CREATE INDEX IF NOT EXISTS idx_apurations_obligation ON apurations(obligation_id);
