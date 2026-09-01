@@ -150,9 +150,23 @@ CREATE TABLE IF NOT EXISTS audit_log (
   FOREIGN KEY (user_id) REFERENCES users(id)
 );
 
+CREATE TABLE IF NOT EXISTS sessions (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  user_id INTEGER NOT NULL,
+  token_hash TEXT NOT NULL UNIQUE,
+  expires_at TEXT NOT NULL,
+  revoked_at TEXT,
+  created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  last_seen_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+);
+
 CREATE INDEX IF NOT EXISTS idx_users_profile ON users(profile_id);
 CREATE INDEX IF NOT EXISTS idx_obligations_responsible ON obligations(responsible_user_id);
 CREATE INDEX IF NOT EXISTS idx_obligations_due_date ON obligations(due_date);
 CREATE INDEX IF NOT EXISTS idx_apurations_obligation ON apurations(obligation_id);
 CREATE INDEX IF NOT EXISTS idx_alerts_user_read ON alerts(user_id, read_at);
 CREATE INDEX IF NOT EXISTS idx_history_entity ON history(entity_type, entity_id);
+CREATE INDEX IF NOT EXISTS idx_sessions_token ON sessions(token_hash);
+CREATE INDEX IF NOT EXISTS idx_sessions_user ON sessions(user_id);
+CREATE INDEX IF NOT EXISTS idx_sessions_expiry ON sessions(expires_at);
