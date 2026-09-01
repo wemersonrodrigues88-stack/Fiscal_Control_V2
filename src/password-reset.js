@@ -73,9 +73,7 @@ export async function handlePasswordReset(request, env) {
       'UPDATE users SET password_hash=?1,updated_at=CURRENT_TIMESTAMP WHERE id=?2'
     ).bind(passwordHash, row.id).run();
 
-    await env.DB.prepare('DELETE FROM sessions WHERE user_id=?1').bind(row.id).run();
-
-    return json({ ok: true, username: row.username, sessions_revoked: true });
+    return json({ ok: true, username: row.username });
   } catch (error) {
     console.error('Password reset failed:', error);
     return json({ error: 'Não foi possível configurar a senha neste momento.' }, 500);
