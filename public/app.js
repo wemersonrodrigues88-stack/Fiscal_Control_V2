@@ -76,7 +76,8 @@ function renderShell() {
     await loadPage();
   }));
   document.querySelector('[data-page="dashboard"]')?.classList.add('active');
-  document.querySelector('#logout').addEventListener('click', () => {
+  document.querySelector('#logout').addEventListener('click', async () => {
+    try { if (state.token) await api('/api/auth/logout', { method: 'POST' }); } catch {}
     sessionStorage.removeItem('fiscal_token');
     state.token = null;
     state.user = null;
