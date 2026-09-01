@@ -1,0 +1,16 @@
+name = "fiscal-control-v2"
+main = "worker.js"
+compatibility_date = "2026-09-01"
+
+[assets]
+directory = "./public"
+not_found_handling = "single-page-application"
+
+[[d1_databases]]
+binding = "DB"
+database_name = "fiscal-control-v2-db"
+database_id = "REPLACE_WITH_NEW_D1_DATABASE_ID"
+
+[vars]
+APP_NAME = "Fiscal Control"
+APP_VERSION = "2.0.0"
