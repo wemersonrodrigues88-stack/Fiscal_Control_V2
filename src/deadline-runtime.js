@@ -13,8 +13,10 @@ async function currentUser(request,env){
   const hash=await sha256(auth.slice(7).trim());
   return env.DB.prepare(`SELECT u.id,u.name,p.name AS profile FROM sessions s JOIN users u ON u.id=s.user_id JOIN profiles p ON p.id=u.profile_id WHERE s.token_hash=?1 AND s.revoked_at IS NULL AND s.expires_at>CURRENT_TIMESTAMP AND u.status='active'`).bind(hash).first();
 }
+let deadlineTablePromise=null;
 async function ensureTable(env){
-  await env.DB.prepare(`CREATE TABLE IF NOT EXISTS deadline_configs (
+  if(deadlineTablePromise) return deadlineTablePromise;
+  deadlineTablePromise=env.DB.prepare(`CREATE TABLE IF NOT EXISTS deadline_configs (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     obligation TEXT NOT NULL,
     state TEXT NOT NULL,
@@ -22,7 +24,11 @@ async function ensureTable(env){
     updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updated_by INTEGER,
     UNIQUE(obligation,state)
-  )`).run();
+  )`).run().catch(error=>{
+    deadlineTablePromise=null;
+    throw error;
+  });
+  return deadlineTablePromise;
 }
 async function visibleStates(env,user){
   if(['Gestão','Desenvolvedor'].includes(user.profile)) return STATES;
