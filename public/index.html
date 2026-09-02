@@ -18,7 +18,7 @@
 <script>
 (function(){
   const labels={feito:'Sem diferença',incons_comercial:'Diferença comercial',incons_contabil:'Diferença contábil'};
-  const apply=()=>document.querySelectorAll('.check-options button[data-v]').forEach(b=>{const label=labels[b.dataset.v];if(label&&b.firstChild)b.firstChild.nodeValue=label+' ';});
+  const apply=()=>document.querySelectorAll('.check-options[data-item="curva_abc"] button[data-v]').forEach(b=>{const label=labels[b.dataset.v];if(label&&b.firstChild)b.firstChild.nodeValue=label+' ';});
   new MutationObserver(apply).observe(document.documentElement,{childList:true,subtree:true});
   apply();
 })();
