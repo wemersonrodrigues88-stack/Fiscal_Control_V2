@@ -8,7 +8,7 @@ async function enhanceHtmlResponse(response) {
   const type = response.headers.get('content-type') || '';
   if (!type.includes('text/html')) return response;
   const html = await response.text();
-  const tags = '<script src="/carteiras-enhancement.js" defer></script><script src="/prazos-enhancement.js" defer></script>';
+  const tags = '<script src="/carteiras-enhancement.js?v=3" defer></script><script src="/prazos-enhancement.js?v=3" defer></script>';
   const enhanced = html.includes('/prazos-enhancement.js') ? html : html.replace('</body>', `${tags}</body>`);
   const headers = new Headers(response.headers);
   headers.set('content-type', 'text/html; charset=UTF-8');
