@@ -10,18 +10,20 @@ async function currentUser(request,env){
 }
 function management(u){return ['Desenvolvedor','Gestão'].includes(u?.profile)}
 async function audit(env,u,request,action,entity=null,id=null){try{await env.DB.prepare(`INSERT INTO audit_log (user_id,request_id,method,path,action,entity_type,entity_id) VALUES (?1,?2,?3,?4,?5,?6,?7)`).bind(u?.id||null,crypto.randomUUID(),request.method,new URL(request.url).pathname,action,entity,id).run()}catch{}}
-async function storesQuery(env){
-  const r=await env.DB.prepare(`SELECT s.id,s.code AS number,s.name,s.document AS document,s.address,s.street,s.neighborhood,s.state,s.state_registration,s.municipal_registration,COALESCE(u.name,'') AS analyst FROM stores s LEFT JOIN portfolio_stores ps ON ps.store_id=s.id LEFT JOIN portfolios p ON p.id=ps.portfolio_id LEFT JOIN users u ON u.id=p.owner_user_id AND u.status='active' WHERE s.status='active' GROUP BY s.id ORDER BY s.name`).all();
-  return r.results||[];
+async function storesQuery(env,ownerIds=null){
+  let sql=`SELECT s.id,s.code AS number,s.name,s.document AS document,s.address,s.street,s.neighborhood,s.state,s.state_registration,s.municipal_registration,COALESCE(u.name,'') AS analyst FROM stores s LEFT JOIN portfolio_stores ps ON ps.store_id=s.id LEFT JOIN portfolios p ON p.id=ps.portfolio_id LEFT JOIN users u ON u.id=p.owner_user_id AND u.status='active' WHERE s.status='active'`;
+  const params=[];
+  if(ownerIds?.length){sql+=` AND p.owner_user_id IN (${ownerIds.map(()=>'?').join(',')})`;params.push(...ownerIds)}
+  sql+=` GROUP BY s.id ORDER BY s.name`;
+  const r=await env.DB.prepare(sql).bind(...params).all(); return r.results||[];
 }
 async function visibleStores(env,user){
-  const stores=await storesQuery(env); let visibleStores=stores;
-  if(['Analista','Assistente'].includes(user.profile)) visibleStores=visibleStores.filter(s=>s.analyst===user.name);
+  if(['Analista','Assistente'].includes(user.profile)) return storesQuery(env,[user.id]);
   if(user.profile==='Coordenador'){
-    const team=await env.DB.prepare(`SELECT u.name FROM users u JOIN team_members tm ON tm.user_id=u.id WHERE tm.coordinator_user_id=?1 AND u.status='active'`).bind(user.id).all();
-    const names=new Set([user.name,...(team.results||[]).map(x=>x.name)]); visibleStores=visibleStores.filter(s=>names.has(s.analyst));
+    const team=await env.DB.prepare(`SELECT u.id FROM users u JOIN team_members tm ON tm.user_id=u.id WHERE tm.coordinator_user_id=?1 AND u.status='active'`).bind(user.id).all();
+    const ids=[user.id,...(team.results||[]).map(x=>x.id)]; return storesQuery(env,ids);
   }
-  return visibleStores;
+  return storesQuery(env);
 }
 async function state(env,user,view='full'){
   const needsStores=['full','dashboard','apuracoes','carteiras','management'].includes(view);
@@ -30,17 +32,25 @@ async function state(env,user,view='full'){
     needsStores?visibleStores(env,user):Promise.resolve([]),
     needsAnalysts?env.DB.prepare(`SELECT u.id,u.name,tm.seniority AS level,'Ativo' AS status FROM users u JOIN profiles p ON p.id=u.profile_id LEFT JOIN team_members tm ON tm.user_id=u.id WHERE u.status='active' AND p.name='Analista' ORDER BY u.name`).all():Promise.resolve({results:[]})
   ]);
-  const visibleIds=new Set(stores.map(s=>String(s.id)));
+  const visibleIds=stores.map(s=>s.id);
   let executions=[]; let deadlines=[]; let history=[];
-  if(['full','dashboard','apuracoes','management'].includes(view)){
-    const r=await env.DB.prepare(`SELECT o.id,o.store_id,o.name AS obligation,o.status,o.updated_at,o.responsible_user_id FROM obligations o WHERE o.id IN (SELECT MAX(id) FROM obligations GROUP BY store_id,name)`).all();
-    executions=(r.results||[]).filter(x=>visibleIds.has(String(x.store_id)));
+  if(['full','dashboard','apuracoes','management'].includes(view) && visibleIds.length){
+    const q=visibleIds.map(()=>'?').join(',');
+    const r=await env.DB.prepare(`SELECT o.id,o.store_id,o.name AS obligation,o.status,o.updated_at,o.responsible_user_id FROM obligations o WHERE o.store_id IN (${q}) AND o.id IN (SELECT MAX(o2.id) FROM obligations o2 WHERE o2.store_id IN (${q}) GROUP BY o2.store_id,o2.name)`).bind(...visibleIds,...visibleIds).all();
+    executions=r.results||[];
   }
   if(['full','prazos'].includes(view)){
-    const r=await env.DB.prepare(`SELECT d.id,o.name AS obligation,d.due_date,d.status FROM deadlines d JOIN obligations o ON o.id=d.obligation_id ORDER BY d.due_date`).all(); deadlines=r.results||[];
+    let r;
+    if(view==='full' || !visibleIds.length){r=await env.DB.prepare(`SELECT d.id,o.name AS obligation,d.due_date,d.status FROM deadlines d JOIN obligations o ON o.id=d.obligation_id ORDER BY d.due_date`).all();}
+    else {const q=visibleIds.map(()=>'?').join(',');r=await env.DB.prepare(`SELECT d.id,o.name AS obligation,d.due_date,d.status FROM deadlines d JOIN obligations o ON o.id=d.obligation_id WHERE o.store_id IN (${q}) ORDER BY d.due_date`).bind(...visibleIds).all();}
+    deadlines=r.results||[];
   }
   if(['full','historico'].includes(view)){
-    const r=await env.DB.prepare(`SELECT h.id,s.code AS number,s.name,s.state,COALESCE((SELECT u2.name FROM portfolio_stores ps2 JOIN portfolios p2 ON p2.id=ps2.portfolio_id JOIN users u2 ON u2.id=p2.owner_user_id AND u2.status='active' WHERE ps2.store_id=s.id ORDER BY p2.id LIMIT 1),'') AS analyst,json_extract(h.description,'$.obligation') AS tax,h.created_at AS hour,json_extract(h.description,'$.status') AS status FROM history h JOIN stores s ON s.id=h.entity_id WHERE h.entity_type='execution' AND json_extract(h.description,'$.status')='Finalizado' ORDER BY h.created_at DESC LIMIT 100`).all(); history=r.results||[];
+    let r;
+    const filter=visibleIds.length?` AND h.entity_id IN (${visibleIds.map(()=>'?').join(',')})`:'';
+    const params=visibleIds.length?visibleIds:[];
+    r=await env.DB.prepare(`SELECT h.id,s.code AS number,s.name,s.state,COALESCE((SELECT u2.name FROM portfolio_stores ps2 JOIN portfolios p2 ON p2.id=ps2.portfolio_id JOIN users u2 ON u2.id=p2.owner_user_id AND u2.status='active' WHERE ps2.store_id=s.id ORDER BY p2.id LIMIT 1),'') AS analyst,json_extract(h.description,'$.obligation') AS tax,h.created_at AS hour,json_extract(h.description,'$.status') AS status FROM history h JOIN stores s ON s.id=h.entity_id WHERE h.entity_type='execution' AND json_extract(h.description,'$.status')='Finalizado'${filter} ORDER BY h.created_at DESC LIMIT 100`).bind(...params).all();
+    history=r.results||[];
   }
   return json({user,analysts:analysts.results||[],stores,executions,deadlines,history,obligations:TAX});
 }
