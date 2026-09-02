@@ -6,6 +6,44 @@ const state = {
   page: 'dashboard'
 };
 
+const PASSWORD_ITERATIONS = 120000;
+
+function base64Url(bytes) {
+  let binary = '';
+  for (const byte of bytes) binary += String.fromCharCode(byte);
+  return btoa(binary).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/g, '');
+}
+
+function fromBase64Url(value) {
+  const normalized = String(value || '').replace(/-/g, '+').replace(/_/g, '/') + '='.repeat((4 - String(value || '').length % 4) % 4);
+  const binary = atob(normalized);
+  return Uint8Array.from(binary, c => c.charCodeAt(0));
+}
+
+async function derivePassword(password, saltBase64Url, iterations = PASSWORD_ITERATIONS) {
+  const salt = typeof saltBase64Url === 'string' ? fromBase64Url(saltBase64Url) : saltBase64Url;
+  const key = await crypto.subtle.importKey('raw', new TextEncoder().encode(password), 'PBKDF2', false, ['deriveBits']);
+  const bits = await crypto.subtle.deriveBits(
+    { name: 'PBKDF2', salt, iterations, hash: 'SHA-256' },
+    key,
+    256
+  );
+  return new Uint8Array(bits);
+}
+
+async function buildPasswordHash(password) {
+  const salt = crypto.getRandomValues(new Uint8Array(16));
+  const derived = await derivePassword(password, salt, PASSWORD_ITERATIONS);
+  return `pbkdf2-sha256$${PASSWORD_ITERATIONS}$${base64Url(salt)}$${base64Url(derived)}`;
+}
+
+async function buildLoginProof(password, challenge, salt, iterations) {
+  const derived = await derivePassword(password, salt, iterations);
+  const key = await crypto.subtle.importKey('raw', derived, { name: 'HMAC', hash: 'SHA-256' }, false, ['sign']);
+  const signature = await crypto.subtle.sign('HMAC', key, new TextEncoder().encode(challenge));
+  return base64Url(new Uint8Array(signature));
+}
+
 async function api(path, options = {}) {
   const headers = { ...(options.headers || {}) };
   if (state.token) headers.Authorization = `Bearer ${state.token}`;
@@ -36,10 +74,21 @@ function renderLogin(message = '') {
 async function login(event) {
   event.preventDefault();
   const form = new FormData(event.currentTarget);
+  const username = String(form.get('username') || '').trim().toLowerCase();
+  const password = String(form.get('password') || '');
+  const button = event.currentTarget.querySelector('button[type="submit"]');
+  button.disabled = true;
+  button.textContent = 'Entrando...';
+
   try {
+    const challengeData = await api('/api/auth/challenge', {
+      method: 'POST',
+      body: JSON.stringify({ username })
+    });
+    const proof = await buildLoginProof(password, challengeData.challenge, challengeData.salt, challengeData.iterations);
     const result = await api('/api/auth/login', {
       method: 'POST',
-      body: JSON.stringify({ username: form.get('username'), password: form.get('password') })
+      body: JSON.stringify({ username, challenge: challengeData.challenge, proof })
     });
     state.token = result.token;
     state.user = result.user;
@@ -142,12 +191,14 @@ function bindCollaboratorForm() {
     button.disabled = true;
     button.textContent = 'Cadastrando...';
     try {
+      const password = document.querySelector('#new-password').value;
+      const passwordHash = await buildPasswordHash(password);
       await api('/api/team/create', {
         method: 'POST',
         body: JSON.stringify({
           name: document.querySelector('#new-name').value.trim(),
           username: document.querySelector('#new-username').value.trim(),
-          password: document.querySelector('#new-password').value,
+          password_hash: passwordHash,
           profile: profile.value,
           seniority: document.querySelector('#new-seniority').value || null,
           coordinator_user_id: coordinator.value || null,
