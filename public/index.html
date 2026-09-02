@@ -6,6 +6,11 @@
 <title>Fiscal Control — Gestão Fiscal Mensal</title>
 <meta name="description" content="Fiscal Control — Gestão Fiscal Mensal">
 <link rel="stylesheet" href="/styles.css">
+<style>
+/* A tela de Apurações usa exclusivamente a implementação atual. O layout legado .grid.three fica oculto desde o primeiro paint. */
+#content > .grid.three,
+#content > .section-title:has(+ .grid.three){display:none!important}
+</style>
 </head>
 <body>
 <div id="app"></div>
@@ -15,7 +20,7 @@
 <script src="/carteiras-enhancement.js?v=8" defer></script>
 <script src="/carteiras-preserve-filter.js?v=1" defer></script>
 <script src="/apuracoes-flow-enhancement.js?v=5" defer></script>
-<script src="/apuracoes-enhancement.js?v=6" defer></script>
+<script src="/apuracoes-enhancement.js?v=7" defer></script>
 <script>
 (function(){
   const labels={feito:'Sem diferença',incons_comercial:'Diferença comercial',incons_contabil:'Diferença contábil'};
