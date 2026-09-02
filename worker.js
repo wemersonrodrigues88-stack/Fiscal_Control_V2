@@ -40,7 +40,7 @@ async function state(env,user,view='full'){
     const r=await env.DB.prepare(`SELECT d.id,o.name AS obligation,d.due_date,d.status FROM deadlines d JOIN obligations o ON o.id=d.obligation_id ORDER BY d.due_date`).all(); deadlines=r.results||[];
   }
   if(['full','historico'].includes(view)){
-    const r=await env.DB.prepare(`SELECT id,entity_type,entity_id,action,description,created_at FROM history ORDER BY created_at DESC LIMIT 100`).all(); history=r.results||[];
+    const r=await env.DB.prepare(`SELECT h.id,s.code AS number,s.name,s.state,COALESCE((SELECT u2.name FROM portfolio_stores ps2 JOIN portfolios p2 ON p2.id=ps2.portfolio_id JOIN users u2 ON u2.id=p2.owner_user_id AND u2.status='active' WHERE ps2.store_id=s.id ORDER BY p2.id LIMIT 1),'') AS analyst,json_extract(h.description,'$.obligation') AS tax,h.created_at AS hour,json_extract(h.description,'$.status') AS status FROM history h JOIN stores s ON s.id=h.entity_id WHERE h.entity_type='execution' AND json_extract(h.description,'$.status')='Finalizado' ORDER BY h.created_at DESC LIMIT 100`).all(); history=r.results||[];
   }
   return json({user,analysts:analysts.results||[],stores,executions,deadlines,history,obligations:TAX});
 }
