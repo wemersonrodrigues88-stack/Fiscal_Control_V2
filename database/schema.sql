@@ -150,6 +150,7 @@ CREATE TABLE IF NOT EXISTS execution_control (
   competence_period TEXT NOT NULL,
   status TEXT NOT NULL DEFAULT 'Pendente',
   started_at TEXT,
+  query_generated_at TEXT,
   analyzing_at TEXT,
   finished_at TEXT,
   updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
@@ -240,9 +241,17 @@ CREATE INDEX IF NOT EXISTS idx_obligations_due_date ON obligations(due_date);
 CREATE INDEX IF NOT EXISTS idx_apurations_obligation ON apurations(obligation_id);
 CREATE INDEX IF NOT EXISTS idx_alerts_user_read ON alerts(user_id, read_at);
 CREATE INDEX IF NOT EXISTS idx_history_entity ON history(entity_type, entity_id);
+CREATE INDEX IF NOT EXISTS idx_history_created_at ON history(created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_audit_log_created_at ON audit_log(created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_sessions_token ON sessions(token_hash);
 CREATE INDEX IF NOT EXISTS idx_sessions_user ON sessions(user_id);
 CREATE INDEX IF NOT EXISTS idx_sessions_expiry ON sessions(expires_at);
 CREATE INDEX IF NOT EXISTS idx_login_challenges_token ON login_challenges(token_hash);
 CREATE INDEX IF NOT EXISTS idx_login_challenges_expiry ON login_challenges(expires_at);
 CREATE INDEX IF NOT EXISTS idx_deadline_configs_state ON deadline_configs(state);
+CREATE INDEX IF NOT EXISTS idx_portfolio_stores_store ON portfolio_stores(store_id, portfolio_id);
+CREATE INDEX IF NOT EXISTS idx_portfolio_stores_portfolio ON portfolio_stores(portfolio_id, store_id);
+CREATE INDEX IF NOT EXISTS idx_portfolios_owner ON portfolios(owner_user_id);
+CREATE INDEX IF NOT EXISTS idx_obligations_store_name_id ON obligations(store_id, name, id DESC);
+CREATE INDEX IF NOT EXISTS idx_deadlines_obligation_due ON deadlines(obligation_id, due_date);
+CREATE INDEX IF NOT EXISTS idx_users_status_profile ON users(status, profile_id);
