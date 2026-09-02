@@ -132,6 +132,17 @@ CREATE TABLE IF NOT EXISTS deadlines (
   FOREIGN KEY (obligation_id) REFERENCES obligations(id) ON DELETE CASCADE
 );
 
+CREATE TABLE IF NOT EXISTS deadline_configs (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  obligation TEXT NOT NULL,
+  state TEXT NOT NULL,
+  due_date TEXT NOT NULL,
+  updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  updated_by INTEGER,
+  UNIQUE(obligation,state),
+  FOREIGN KEY (updated_by) REFERENCES users(id)
+);
+
 CREATE TABLE IF NOT EXISTS alerts (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   user_id INTEGER NOT NULL,
@@ -201,3 +212,4 @@ CREATE INDEX IF NOT EXISTS idx_sessions_user ON sessions(user_id);
 CREATE INDEX IF NOT EXISTS idx_sessions_expiry ON sessions(expires_at);
 CREATE INDEX IF NOT EXISTS idx_login_challenges_token ON login_challenges(token_hash);
 CREATE INDEX IF NOT EXISTS idx_login_challenges_expiry ON login_challenges(expires_at);
+CREATE INDEX IF NOT EXISTS idx_deadline_configs_state ON deadline_configs(state);
