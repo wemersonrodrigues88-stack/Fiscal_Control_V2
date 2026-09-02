@@ -143,6 +143,39 @@ CREATE TABLE IF NOT EXISTS deadline_configs (
   FOREIGN KEY (updated_by) REFERENCES users(id)
 );
 
+CREATE TABLE IF NOT EXISTS execution_control (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  store_id INTEGER NOT NULL,
+  obligation TEXT NOT NULL,
+  competence_period TEXT NOT NULL,
+  status TEXT NOT NULL DEFAULT 'Pendente',
+  started_at TEXT,
+  analyzing_at TEXT,
+  finished_at TEXT,
+  updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  updated_by INTEGER,
+  UNIQUE(store_id, obligation, competence_period),
+  FOREIGN KEY (store_id) REFERENCES stores(id) ON DELETE CASCADE,
+  FOREIGN KEY (updated_by) REFERENCES users(id)
+);
+
+CREATE TABLE IF NOT EXISTS icms_checklist (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  store_id INTEGER NOT NULL,
+  competence_period TEXT NOT NULL,
+  item_key TEXT NOT NULL,
+  status TEXT NOT NULL,
+  updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  updated_by INTEGER,
+  UNIQUE(store_id, competence_period, item_key),
+  FOREIGN KEY (store_id) REFERENCES stores(id) ON DELETE CASCADE,
+  FOREIGN KEY (updated_by) REFERENCES users(id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_execution_control_store_period ON execution_control(store_id, competence_period);
+CREATE INDEX IF NOT EXISTS idx_execution_control_status ON execution_control(status);
+CREATE INDEX IF NOT EXISTS idx_icms_checklist_store_period ON icms_checklist(store_id, competence_period);
+
 CREATE TABLE IF NOT EXISTS alerts (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   user_id INTEGER NOT NULL,
