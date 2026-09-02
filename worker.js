@@ -7,7 +7,7 @@ const STORE_COLUMNS = {
 
 function json(data, status = 200) { return new Response(JSON.stringify(data), { status, headers: JSON_HEADERS }); }
 function unauthorized(){ return json({error:'Não autenticado.'},401); }
-async function sha256(value){ const d=await crypto.subtle.digest('SHA-256',new TextEncoder().encode(value)); let b=''; for(const x of new Uint8Array(d)) b+=String.fromCharCode(x); return btoa(b).replace(/\+/g,'-').replace(/\//g,'_').replace(/=+$/g,''); }
+async function sha256(value){ const d=await crypto.subtle.digest('SHA-256',new TextEncoder().encode(value)); let b=''; for(const x of new Uint8Array(d)) b+=String.fromCharCode(x); return btoa(b).replace(/\+/g,'-').replace(/\//g,'_').replace(/=+$/,''); }
 async function currentUser(request,env){
   const auth=request.headers.get('Authorization')||''; if(!auth.startsWith('Bearer ')) return null;
   const hash=await sha256(auth.slice(7).trim());
@@ -115,13 +115,10 @@ async function api(request,env){
       const r=params.length?await env.DB.prepare(sql).bind(...params).all():await env.DB.prepare(sql).all(); return json({data:r.results||[]});
     }
     if(path==='/api/team/options'&&request.method==='GET'){
-      if(!management(user))return json({error:'Sem permissão.'},403); const [c,m]=await Promise.all([env.DB.prepare("SELECT u.id,u.name FROM users u JOIN profiles p ON p.id=u.profile_id WHERE u.status='active' AND p.name='Coordenador' ORDER BY u.name").all(),env.DB.prepare("SELECT u.id,u.name FROM users u JOIN profiles p ON p.id=u.profile_id WHERE u.status='active' AND p.name='Gestão' ORDER BY u.name").all()]); return json({coordinators:c.results||[],managers:m.results||[]});
+      if(!management(user))return json({error:'Sem permissão.'},403); const [c,m]=await Promise.all([env.DB.prepare("SELECT u.id,u.name FROM users u JOIN profiles p ON p.id=u.profile_id WHERE u.status='active' AND p.name='Coordenador' ORDER BY u.name").all(),env.DB.prepare("SELECT u.id,u.name FROM users u JOIN profiles p ON p.id=u.profile_id WHERE u.status='active' AND p.name IN ('Gerente','Gestão') ORDER BY u.name").all()]); return json({coordinators:c.results||[],managers:m.results||[]});
     }
     if(path==='/api/portfolios'&&request.method==='GET'){const r=await env.DB.prepare('SELECT * FROM portfolios ORDER BY name').all();return json({data:r.results||[]});}
-    if(path==='/api/management/analysts'&&request.method==='GET'){
-      if(!management(user))return json({error:'Sem permissão.'},403); const r=await env.DB.prepare(`SELECT u.id,u.name,tm.seniority,tm.coordinator_user_id,tm.manager_user_id,c.name AS coordinator_name,m.name AS manager_name,COUNT(DISTINCT ap.portfolio_id) AS portfolio_count,(SELECT COUNT(*) FROM obligations o WHERE o.responsible_user_id=u.id) AS obligation_count,(SELECT COUNT(*) FROM obligations o WHERE o.responsible_user_id=u.id AND o.status IN ('pending','in_progress')) AS pending_count,(SELECT COUNT(*) FROM obligations o WHERE o.responsible_user_id=u.id AND o.status='overdue') AS overdue_count FROM users u JOIN profiles p ON p.id=u.profile_id LEFT JOIN team_members tm ON tm.user_id=u.id LEFT JOIN users c ON c.id=tm.coordinator_user_id LEFT JOIN users m ON m.id=tm.manager_user_id LEFT JOIN analyst_portfolios ap ON ap.analyst_user_id=u.id WHERE u.status='active' AND p.name='Analista' GROUP BY u.id,u.name,tm.seniority,tm.coordinator_user_id,tm.manager_user_id,c.name,m.name ORDER BY u.name`).all(); return json({data:r.results||[]});
-    }
     return json({error:'Rota não encontrada.'},404);
-  }catch(error){console.error('Fiscal API error:',error);return json({error:'Erro interno do servidor.'},500)}
+  }catch(error){console.error('API error:',error);return json({error:'Erro interno do servidor.'},500)}
 }
-export default {async fetch(request,env,ctx){if(new URL(request.url).pathname.startsWith('/api/'))return api(request,env,ctx);return env.ASSETS.fetch(request)}};
+export default {fetch(request,env){return api(request,env)}};
