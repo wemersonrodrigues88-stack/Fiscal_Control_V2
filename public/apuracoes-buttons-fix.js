@@ -16,7 +16,7 @@
         }
       }
       await api('/api/apuracoes/status',{method:'PUT',body:JSON.stringify({store_id:id,obligation:tax,status:next})});
-      location.reload();
+      document.querySelector('[data-page="apuracoes"]')?.click();
     }catch(e){alert(e.message);setBusy(b,false)}
   };
   document.addEventListener('click',e=>{
