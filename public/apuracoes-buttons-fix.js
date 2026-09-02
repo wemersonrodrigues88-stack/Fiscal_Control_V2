@@ -3,8 +3,13 @@
   const syncButtons=()=>{
     document.querySelectorAll('.ap-action').forEach(b=>{
       const row=b.closest('.ap-row');
-      const status=(row?.querySelector('small')?.textContent||'').replace(/^Status:\s*/i,'').trim();
-      const map={Pendente:['Gerar','Gerando'],Gerando:['Query gerada','Query geradas'],'Query geradas':['Analisar','Analisando'],Analisando:['Finalizar','Finalizado']};
+      const small=row?.querySelector('small');
+      let status=(small?.textContent||'').replace(/^Status:\s*/i,'').trim();
+      if(status==='Gerando'){
+        if(small)small.textContent='Status: Gerando query';
+        status='Gerando';
+      }
+      const map={Pendente:['Gerar','Gerando'],Gerando:['Query geradas','Query geradas'],'Query geradas':['Analisar','Analisando'],Analisando:['Finalizar','Finalizado']};
       const next=map[status];
       if(next){b.textContent=next[0];b.dataset.next=next[1]}
     });
