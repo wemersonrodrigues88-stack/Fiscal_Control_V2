@@ -6,7 +6,7 @@ import { handleTeamStatusRuntime } from './src/team-status-runtime.js';
 import { prepareStoreRuntime, sortStorePayload } from './src/store-runtime.js';
 const TAXES=['ICMS','PIS/COFINS','ISS','SPED ICMS','Fronteiras'];
 const CHECK_ITEMS=['quebra_sequencia','painel_inconsistencia','notas_baixa_estoque','curva_abc','ajustes_credito_debito','contabilizacao'];
-const CHECK_ALLOWED={quebra_sequencia:['feito','ha_quebras'],painel_inconsistencia:['feito'],notas_baixa_estoque:['feito','ha_quebras'],curva_abc:['feito','incons_comercial','incons_contabil'],ajustes_credito_debito:['feito'],contabilizacao:['feito']};
+const CHECK_ALLOWED={quebra_sequencia:['feito','ha_quebras'],painel_inconsistencia:['feito'],notas_baixa_estoque:['feito'],curva_abc:['feito','incons_comercial','incons_contabil'],ajustes_credito_debito:['feito'],contabilizacao:['feito']};
 function j(data,status=200){return new Response(JSON.stringify(data),{status,headers:{'content-type':'application/json; charset=UTF-8'}})}
 async function sha(v){const d=await crypto.subtle.digest('SHA-256',new TextEncoder().encode(v));let b='';for(const x of new Uint8Array(d))b+=String.fromCharCode(x);return btoa(b).replace(/\+/g,'-').replace(/\//g,'_').replace(/=+$/,'')}
 async function cu(req,env){const a=req.headers.get('Authorization')||'';if(!a.startsWith('Bearer '))return null;const h=await sha(a.slice(7).trim());return env.DB.prepare(`SELECT u.id,u.name,p.name AS profile FROM sessions s JOIN users u ON u.id=s.user_id JOIN profiles p ON p.id=u.profile_id WHERE s.token_hash=?1 AND s.revoked_at IS NULL AND s.expires_at>CURRENT_TIMESTAMP AND u.status='active'`).bind(h).first()}
