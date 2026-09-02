@@ -1,7 +1,32 @@
 const app = document.querySelector('#app');
 
+const PASSWORD_ITERATIONS = 120000;
+
 function escapeHtml(value) {
   return String(value ?? '').replace(/[&<>'"]/g, c => ({ '&':'&amp;', '<':'&lt;', '>':'&gt;', "'":'&#39;', '"':'&quot;' }[c]));
+}
+
+function base64Url(bytes) {
+  let binary = '';
+  for (const byte of bytes) binary += String.fromCharCode(byte);
+  return btoa(binary).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/g, '');
+}
+
+async function hashPassword(password) {
+  const salt = crypto.getRandomValues(new Uint8Array(16));
+  const key = await crypto.subtle.importKey(
+    'raw',
+    new TextEncoder().encode(password),
+    'PBKDF2',
+    false,
+    ['deriveBits']
+  );
+  const bits = await crypto.subtle.deriveBits(
+    { name: 'PBKDF2', salt, iterations: PASSWORD_ITERATIONS, hash: 'SHA-256' },
+    key,
+    256
+  );
+  return `pbkdf2-sha256$${PASSWORD_ITERATIONS}$${base64Url(salt)}$${base64Url(new Uint8Array(bits))}`;
 }
 
 function installAccessSetup() {
@@ -59,13 +84,14 @@ function installAccessSetup() {
     button.disabled = true;
     button.textContent = 'Salvando...';
     try {
+      const passwordHash = await hashPassword(password);
       const response = await fetch('/api/auth/reset-password', {
         method: 'POST',
         headers: {
           'content-type': 'application/json',
           'X-Bootstrap-Secret': secret
         },
-        body: JSON.stringify({ username, password })
+        body: JSON.stringify({ username, password_hash: passwordHash })
       });
       const data = await response.json().catch(() => ({}));
       if (!response.ok) throw new Error(data.error || `HTTP ${response.status}`);
