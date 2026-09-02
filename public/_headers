@@ -1,0 +1,30 @@
+/app.js*
+  Cache-Control: public, max-age=31536000, immutable
+/performance-enhancement.js*
+  Cache-Control: public, max-age=31536000, immutable
+/prazos-enhancement.js*
+  Cache-Control: public, max-age=31536000, immutable
+/carteiras-enhancement.js*
+  Cache-Control: public, max-age=31536000, immutable
+/carteiras-preserve-filter.js*
+  Cache-Control: public, max-age=31536000, immutable
+/apuracoes-enhancement.js*
+  Cache-Control: public, max-age=31536000, immutable
+/apuracoes-status-enhancement.js*
+  Cache-Control: public, max-age=31536000, immutable
+/apuracoes-lock.js*
+  Cache-Control: public, max-age=31536000, immutable
+/apuracoes-flow-v2.js*
+  Cache-Control: public, max-age=31536000, immutable
+/gestao-enhancement.js*
+  Cache-Control: public, max-age=31536000, immutable
+/gestao-vinculos.js*
+  Cache-Control: public, max-age=31536000, immutable
+/assistentes-enhancement.js*
+  Cache-Control: public, max-age=31536000, immutable
+/situacao-colaborador-lock.js*
+  Cache-Control: public, max-age=31536000, immutable
+/redefinir-senha-enhancement.js*
+  Cache-Control: public, max-age=31536000, immutable
+/styles.css*
+  Cache-Control: public, max-age=31536000, immutable
