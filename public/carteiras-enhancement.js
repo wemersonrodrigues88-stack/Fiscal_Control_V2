@@ -30,21 +30,68 @@
   }
 
   function isCarteiras() {
-    const title = document.querySelector('#page-title');
-    return title && title.textContent.trim() === 'Carteiras';
+    return document.querySelector('#page-title')?.textContent.trim() === 'Carteiras';
+  }
+
+  function getTableInfo() {
+    const table = document.querySelector('#content table');
+    if (!table) return null;
+    const headers = [...table.querySelectorAll('thead th')].map(th => th.textContent.trim().toLowerCase());
+    const stateIndex = headers.indexOf('estado');
+    const analystIndex = headers.indexOf('analista');
+    return { table, stateIndex, analystIndex };
   }
 
   function getRows() {
     return [...document.querySelectorAll('#content table tbody tr')];
   }
 
+  function readCell(row, index) {
+    return index >= 0 ? row.querySelectorAll('td')[index]?.textContent.trim() || '' : '';
+  }
+
+  function refreshOptions(bar) {
+    const stateSelect = bar.querySelector('#carteiras-state-filter');
+    const analystSelect = bar.querySelector('#carteiras-analyst-filter');
+    const info = getTableInfo();
+    if (!stateSelect || !analystSelect || !info) return;
+    const currentState = stateSelect.value;
+    const currentAnalyst = analystSelect.value;
+    const states = new Set();
+    const analysts = new Set();
+    getRows().forEach(row => {
+      const s = readCell(row, info.stateIndex);
+      const a = readCell(row, info.analystIndex);
+      if (s && s !== '—') states.add(s);
+      if (a && a !== '—') analysts.add(a);
+    });
+    stateSelect.innerHTML = '<option value="">Todos os estados</option>';
+    analystSelect.innerHTML = '<option value="">Todos os analistas</option>';
+    [...states].sort((a,b)=>a.localeCompare(b,'pt-BR')).forEach(v => stateSelect.insertAdjacentHTML('beforeend', `<option value="${esc(v)}">${esc(v)}</option>`));
+    [...analysts].sort((a,b)=>a.localeCompare(b,'pt-BR')).forEach(v => analystSelect.insertAdjacentHTML('beforeend', `<option value="${esc(v)}">${esc(v)}</option>`));
+    stateSelect.value = [...stateSelect.options].some(o=>o.value===currentState) ? currentState : '';
+    analystSelect.value = [...analystSelect.options].some(o=>o.value===currentAnalyst) ? currentAnalyst : '';
+  }
+
+  function applyFilters() {
+    const bar = document.getElementById(BAR_ID);
+    const info = getTableInfo();
+    if (!bar || !info) return;
+    const state = bar.querySelector('#carteiras-state-filter')?.value || '';
+    const analyst = bar.querySelector('#carteiras-analyst-filter')?.value || '';
+    getRows().forEach(row => {
+      const rowState = readCell(row, info.stateIndex);
+      const rowAnalyst = readCell(row, info.analystIndex);
+      row.style.display = (!state || rowState === state) && (!analyst || rowAnalyst === analyst) ? '' : 'none';
+    });
+  }
+
   function setup() {
     if (!isCarteiras()) return;
-    installStyle();
     const content = document.querySelector('#content');
-    const table = content?.querySelector('table');
-    if (!content || !table) return;
-
+    const info = getTableInfo();
+    if (!content || !info) return;
+    installStyle();
     let bar = document.getElementById(BAR_ID);
     if (!bar) {
       bar = document.createElement('div');
@@ -55,82 +102,39 @@
         <button type="button" class="clear-btn" id="carteiras-clear-filter">Limpar filtros</button>
         <button type="button" class="print-btn" id="carteiras-print-screen">Imprimir tela</button>
         <button type="button" class="print-btn" id="carteiras-print-list">Imprimir lista</button>`;
-      content.insertBefore(bar, table.parentElement || table);
-
-      const stateSelect = bar.querySelector('#carteiras-state-filter');
-      const analystSelect = bar.querySelector('#carteiras-analyst-filter');
-
-      const refreshOptions = () => {
-        const currentState = stateSelect.value;
-        const currentAnalyst = analystSelect.value;
-        const states = new Set();
-        const analysts = new Set();
-        getRows().forEach(row => {
-          const cells = row.querySelectorAll('td');
-          if (cells[2]) states.add(cells[2].textContent.trim());
-          if (cells[4]) analysts.add(cells[4].textContent.trim());
-        });
-        stateSelect.innerHTML = '<option value="">Todos os estados</option>';
-        analystSelect.innerHTML = '<option value="">Todos os analistas</option>';
-        [...states].filter(Boolean).sort((a,b)=>a.localeCompare(b,'pt-BR')).forEach(v => stateSelect.insertAdjacentHTML('beforeend', `<option value="${esc(v)}">${esc(v)}</option>`));
-        [...analysts].filter(Boolean).sort((a,b)=>a.localeCompare(b,'pt-BR')).forEach(v => analystSelect.insertAdjacentHTML('beforeend', `<option value="${esc(v)}">${esc(v)}</option>`));
-        if ([...stateSelect.options].some(o => o.value === currentState)) stateSelect.value = currentState;
-        if ([...analystSelect.options].some(o => o.value === currentAnalyst)) analystSelect.value = currentAnalyst;
+      content.insertBefore(bar, info.table.parentElement || info.table);
+      bar.querySelector('#carteiras-state-filter').onchange = applyFilters;
+      bar.querySelector('#carteiras-analyst-filter').onchange = applyFilters;
+      bar.querySelector('#carteiras-clear-filter').onclick = () => {
+        bar.querySelector('#carteiras-state-filter').value='';
+        bar.querySelector('#carteiras-analyst-filter').value='';
+        applyFilters();
       };
-
-      const apply = () => {
-        const state = stateSelect.value;
-        const analyst = analystSelect.value;
-        getRows().forEach(row => {
-          const cells = row.querySelectorAll('td');
-          const rowState = cells[2]?.textContent.trim() || '';
-          const rowAnalyst = cells[4]?.textContent.trim() || '';
-          row.style.display = (!state || rowState === state) && (!analyst || rowAnalyst === analyst) ? '' : 'none';
-        });
-      };
-
-      stateSelect.onchange = apply;
-      analystSelect.onchange = apply;
-      bar.querySelector('#carteiras-clear-filter').onclick = () => { stateSelect.value=''; analystSelect.value=''; apply(); };
-      bar.querySelector('#carteiras-print-screen').onclick = () => {
-        document.body.classList.add('print-carteiras');
-        window.print();
-        setTimeout(() => document.body.classList.remove('print-carteiras'), 500);
-      };
-      bar.querySelector('#carteiras-print-list').onclick = () => {
+      const print = (listOnly) => {
         document.body.classList.add('print-carteiras');
         const old = document.title;
-        document.title = 'Fiscal Control - Carteiras';
+        if (listOnly) document.title = 'Fiscal Control - Carteiras';
         window.print();
         document.title = old;
         setTimeout(() => document.body.classList.remove('print-carteiras'), 500);
       };
-
-      refreshOptions();
-    } else {
-      // Rebuild filter options when the SPA replaces the table data.
-      const stateSelect = bar.querySelector('#carteiras-state-filter');
-      const analystSelect = bar.querySelector('#carteiras-analyst-filter');
-      if (stateSelect && analystSelect) {
-        const currentState = stateSelect.value;
-        const currentAnalyst = analystSelect.value;
-        const states = new Set(), analysts = new Set();
-        getRows().forEach(row => {
-          const cells = row.querySelectorAll('td');
-          if (cells[2]) states.add(cells[2].textContent.trim());
-          if (cells[4]) analysts.add(cells[4].textContent.trim());
-        });
-        stateSelect.innerHTML = '<option value="">Todos os estados</option>';
-        analystSelect.innerHTML = '<option value="">Todos os analistas</option>';
-        [...states].filter(Boolean).sort((a,b)=>a.localeCompare(b,'pt-BR')).forEach(v => stateSelect.insertAdjacentHTML('beforeend', `<option value="${esc(v)}">${esc(v)}</option>`));
-        [...analysts].filter(Boolean).sort((a,b)=>a.localeCompare(b,'pt-BR')).forEach(v => analystSelect.insertAdjacentHTML('beforeend', `<option value="${esc(v)}">${esc(v)}</option>`));
-        stateSelect.value = currentState;
-        analystSelect.value = currentAnalyst;
-      }
+      bar.querySelector('#carteiras-print-screen').onclick = () => print(false);
+      bar.querySelector('#carteiras-print-list').onclick = () => print(true);
     }
+    refreshOptions(bar);
+    applyFilters();
   }
 
-  const observer = new MutationObserver(() => setTimeout(setup, 0));
-  observer.observe(document.documentElement, { childList:true, subtree:true });
-  window.addEventListener('load', setup);
+  let scheduled = false;
+  const schedule = () => {
+    if (scheduled) return;
+    scheduled = true;
+    setTimeout(() => { scheduled = false; setup(); }, 80);
+  };
+  new MutationObserver(schedule).observe(document.documentElement, { childList:true, subtree:true });
+  window.addEventListener('load', schedule);
+  document.addEventListener('click', e => {
+    if (e.target.closest('[data-page="carteiras"]')) schedule();
+  });
+  schedule();
 })();
