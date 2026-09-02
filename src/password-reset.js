@@ -65,7 +65,6 @@ export async function handlePasswordReset(request, env) {
       return json({ error: 'Usuário e senha válida são obrigatórios. A senha deve ter entre 12 e 128 caracteres.' }, 400);
     }
 
-    // Recuperação administrativa independente de profiles e de colunas de auditoria.
     const row = await env.DB.prepare(
       'SELECT id,username FROM users WHERE username=?1 LIMIT 1'
     ).bind(username).first();
@@ -74,14 +73,12 @@ export async function handlePasswordReset(request, env) {
 
     const passwordHash = await hashPassword(password);
 
-    // O login exige status=active; a recuperação administrativa garante a conta ativa.
-    // Não usa updated_at nem depende do objeto meta retornado pelo D1.
+    // Atualiza somente a coluna necessária. Não depende de status, updated_at,
+    // auditoria ou qualquer outro objeto da instalação legada do D1.
     await env.DB.prepare(
-      "UPDATE users SET password_hash=?1,status='active' WHERE id=?2"
+      'UPDATE users SET password_hash=?1 WHERE id=?2'
     ).bind(passwordHash, row.id).run();
 
-    // Sessões antigas não podem continuar válidas após uma recuperação de senha.
-    // A tabela pode variar em instalações antigas, portanto a revogação é isolada.
     try {
       await env.DB.prepare('DELETE FROM sessions WHERE user_id=?1').bind(row.id).run();
     } catch (sessionError) {
