@@ -21,6 +21,9 @@
     const btn=document.querySelector('#save-deadlines');btn.disabled=true;btn.textContent='Salvando...';
     try{const items=[...document.querySelectorAll('.deadline-input')].map(i=>({obligation:i.dataset.tax,state:i.dataset.state,due_date:i.value}));await api('/api/deadline-configs',{method:'PUT',body:JSON.stringify({items})});await load();render(document.querySelector('#content'),{states:STATES});alert('Prazos salvos com sucesso.')}catch(e){alert(e.message)}finally{btn.disabled=false;btn.textContent='Salvar prazos'}
   }
-  window.prazos=async function(c){try{const r=await load();render(c,r)}catch(e){c.innerHTML=`<div class="error">${esc(e.message)}</div>`}};
+  window.renderEnhancedPrazos=async function(c){try{const r=await load();render(c,r)}catch(e){c.innerHTML=`<div class="error">${esc(e.message)}</div>`}};
+  function activate(){const title=document.querySelector('#page-title');const content=document.querySelector('#content');if(title&&content&&title.textContent==='Prazos')window.renderEnhancedPrazos(content)}
+  document.addEventListener('click',e=>{if(e.target.closest('[data-page="prazos"]'))setTimeout(activate,180)});
+  setTimeout(activate,180);
   const style=document.createElement('style');style.textContent='.deadline-table th,.deadline-table td{vertical-align:middle}.deadline-input{width:100%;min-width:130px;padding:9px;border:1px solid #dfe5ef;border-radius:8px;background:#fff;font:inherit}.deadline-date{font-weight:600}.deadline-note{margin-top:12px;font-size:13px;color:#6b7280}';document.head.appendChild(style);
 })();
