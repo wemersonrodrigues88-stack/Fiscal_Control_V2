@@ -3,6 +3,17 @@ import { handlePasswordReset } from './src/password-reset.js';
 import { handleAuthRuntime } from './src/auth-runtime.js';
 import { prepareStoreRuntime, sortStorePayload } from './src/store-runtime.js';
 
+async function enhanceHtmlResponse(response) {
+  const type = response.headers.get('content-type') || '';
+  if (!type.includes('text/html')) return response;
+  const html = await response.text();
+  const tag = '<script src="/carteiras-enhancement.js" defer></script>';
+  const enhanced = html.includes('/carteiras-enhancement.js') ? html : html.replace('</body>', `${tag}</body>`);
+  const headers = new Headers(response.headers);
+  headers.set('content-type', 'text/html; charset=UTF-8');
+  return new Response(enhanced, { status: response.status, statusText: response.statusText, headers });
+}
+
 export default {
   async fetch(request, env, ctx) {
     const resetResponse = await handlePasswordReset(request, env);
@@ -27,6 +38,7 @@ export default {
       });
     }
 
+    if (request.method === 'GET' && !url.pathname.startsWith('/api/')) return enhanceHtmlResponse(response);
     return response;
   }
 };
