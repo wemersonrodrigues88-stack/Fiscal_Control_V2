@@ -74,4 +74,20 @@
     return fetchFresh(requestInput,init,key);
   };
   window.addEventListener('pagehide',()=>{cache.clear();inflight.clear()});
+
+  // Evita chamadas duplicadas que as telas antigas fazem antes dos enhancements.
+  const originalLoadPage=window.loadPage;
+  if(typeof originalLoadPage==='function'){
+    window.loadPage=async function(){
+      if(state.page==='equipe'){
+        const c=document.querySelector('#content'),title=document.querySelector('#page-title');
+        if(c&&title){title.textContent='Equipe';c.innerHTML='<div class="card">Carregando...</div>';try{state.data={stores:[],executions:[],analysts:[],deadlines:[],history:[]};return await window.equipe(c)}catch(e){c.innerHTML=`<div class="error">${String(e?.message||e)}</div>`;return}}
+      }
+      if(state.page==='apuracoes'){
+        const c=document.querySelector('#content'),title=document.querySelector('#page-title');
+        if(c&&title){title.textContent='Apurações';c.innerHTML='<div class="card">Carregando...</div>';state.data={stores:[],executions:[],analysts:[],deadlines:[],history:[]};return}
+      }
+      return originalLoadPage.apply(this,arguments);
+    };
+  }
 })();
