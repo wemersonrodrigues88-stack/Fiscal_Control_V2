@@ -2,7 +2,8 @@
   const TAXES=['ICMS','PIS/COFINS','ISS','SPED ICMS','Fronteiras'];
   const STATES=['PE','AL','PB','SP'];
   let cache=[];
-  const esc=v=>String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+  let rendering=false;
+  const esc=v=>String(v??'').replace(/[&<>\"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','\"':'&quot;',"'":'&#39;'}[c]));
   const fmt=v=>v?String(v).slice(0,10):'';
   const isManager=()=>['Gestão','Desenvolvedor'].includes(state.user?.profile);
   async function load(){const r=await api('/api/deadline-configs');cache=r.data||[];return r}
@@ -21,9 +22,17 @@
     const btn=document.querySelector('#save-deadlines');btn.disabled=true;btn.textContent='Salvando...';
     try{const items=[...document.querySelectorAll('.deadline-input')].map(i=>({obligation:i.dataset.tax,state:i.dataset.state,due_date:i.value}));await api('/api/deadline-configs',{method:'PUT',body:JSON.stringify({items})});await load();render(document.querySelector('#content'),{states:STATES});alert('Prazos salvos com sucesso.')}catch(e){alert(e.message)}finally{btn.disabled=false;btn.textContent='Salvar prazos'}
   }
-  window.renderEnhancedPrazos=async function(c){try{const r=await load();render(c,r)}catch(e){c.innerHTML=`<div class="error">${esc(e.message)}</div>`}};
-  function activate(){const title=document.querySelector('#page-title');const content=document.querySelector('#content');if(title&&content&&title.textContent==='Prazos')window.renderEnhancedPrazos(content)}
-  document.addEventListener('click',e=>{if(e.target.closest('[data-page="prazos"]'))setTimeout(activate,180)});
-  setTimeout(activate,180);
+  window.renderEnhancedPrazos=async function(c){if(rendering)return;rendering=true;try{const r=await load();render(c,r)}catch(e){c.innerHTML=`<div class="error">${esc(e.message)}</div>`}finally{rendering=false}};
+  function isPrazosScreen(){
+    const c=document.querySelector('#content');
+    if(!c)return false;
+    const h=[...c.querySelectorAll('h2,h1')].some(x=>x.textContent.trim()==='Prazos');
+    return h;
+  }
+  function activate(){const c=document.querySelector('#content');if(c&&isPrazosScreen()&&!c.querySelector('.deadline-table')&&!c.querySelector('#save-deadlines'))window.renderEnhancedPrazos(c)}
+  document.addEventListener('click',e=>{if(e.target.closest('[data-page="prazos"]'))setTimeout(activate,80)});
+  const observer=new MutationObserver(()=>{setTimeout(activate,40)});
+  observer.observe(document.documentElement,{subtree:true,childList:true});
+  setTimeout(activate,250);
   const style=document.createElement('style');style.textContent='.deadline-table th,.deadline-table td{vertical-align:middle}.deadline-input{width:100%;min-width:130px;padding:9px;border:1px solid #dfe5ef;border-radius:8px;background:#fff;font:inherit}.deadline-date{font-weight:600}.deadline-note{margin-top:12px;font-size:13px;color:#6b7280}';document.head.appendChild(style);
 })();
