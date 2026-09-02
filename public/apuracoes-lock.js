@@ -9,6 +9,7 @@
   const EXPECTED_GIT_BLOB_SHA='1484858f2489f9e830e458cc815ed2a02491f169';
   const SCRIPT='/apuracoes-enhancement.js?v=8';
   let checking=false;
+  let blocked=false;
 
   function toHex(bytes){return Array.from(new Uint8Array(bytes),x=>x.toString(16).padStart(2,'0')).join('')}
   async function gitBlobSha(text){
@@ -19,12 +20,14 @@
     return toHex(await crypto.subtle.digest('SHA-1',data));
   }
   function locked(message){
+    if(blocked)return;
+    blocked=true;
     const c=document.querySelector('#content');
     if(!c)return;
     c.innerHTML=`<div class="card error" style="border:1px solid #f04438;padding:18px"><b>Apurações protegida</b><p>${message}</p><small>A versão autorizada da tela não foi alterada. Nenhuma versão diferente será executada.</small></div>`;
   }
   async function check(){
-    if(checking)return;
+    if(checking||blocked)return;
     const title=document.querySelector('#page-title')?.textContent?.trim();
     if(title!=='Apurações')return;
     checking=true;
@@ -50,6 +53,6 @@
     }finally{checking=false}
   }
   document.addEventListener('click',e=>{if(e.target.closest('[data-page="apuracoes"]'))setTimeout(check,350)});
-  new MutationObserver(()=>{if(document.querySelector('#page-title')?.textContent?.trim()==='Apurações')setTimeout(check,150)}).observe(document.documentElement,{childList:true,subtree:true});
+  new MutationObserver(()=>{if(!blocked&&document.querySelector('#page-title')?.textContent?.trim()==='Apurações')setTimeout(check,150)}).observe(document.documentElement,{childList:true,subtree:true});
   setTimeout(check,500);
 })();
