@@ -101,7 +101,8 @@ CREATE TABLE IF NOT EXISTS apurations (
   responsible_user_id INTEGER,
   created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
   updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
-  FOREIGN KEY (obligation_id) REFERENCES obligations(id) ON DELETE CASCADE
+  FOREIGN KEY (obligation_id) REFERENCES obligations(id) ON DELETE CASCADE,
+  FOREIGN KEY (responsible_user_id) REFERENCES users(id)
 );
 
 CREATE TABLE IF NOT EXISTS executions (
