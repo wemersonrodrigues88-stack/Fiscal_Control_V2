@@ -1,16 +1,8 @@
-const PASSWORD_ITERATIONS = 120000;
-
 function json(data, status = 200) {
   return new Response(JSON.stringify(data), {
     status,
     headers: { 'content-type': 'application/json; charset=UTF-8' }
   });
-}
-
-function base64Url(bytes) {
-  let binary = '';
-  for (const byte of bytes) binary += String.fromCharCode(byte);
-  return btoa(binary).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/g, '');
 }
 
 function constantTimeEqual(a, b) {
@@ -20,21 +12,13 @@ function constantTimeEqual(a, b) {
   return diff === 0;
 }
 
-async function hashPassword(password) {
-  const salt = crypto.getRandomValues(new Uint8Array(16));
-  const key = await crypto.subtle.importKey(
-    'raw',
-    new TextEncoder().encode(password),
-    'PBKDF2',
-    false,
-    ['deriveBits']
-  );
-  const bits = await crypto.subtle.deriveBits(
-    { name: 'PBKDF2', salt, iterations: PASSWORD_ITERATIONS, hash: 'SHA-256' },
-    key,
-    256
-  );
-  return `pbkdf2-sha256$${PASSWORD_ITERATIONS}$${base64Url(salt)}$${base64Url(new Uint8Array(bits))}`;
+function isValidPasswordHash(value) {
+  const parts = String(value || '').split('$');
+  if (parts.length !== 4 || parts[0] !== 'pbkdf2-sha256') return false;
+  const iterations = Number(parts[1]);
+  if (!Number.isInteger(iterations) || iterations < 100000 || iterations > 500000) return false;
+  if (!/^[A-Za-z0-9_-]+$/.test(parts[2]) || !/^[A-Za-z0-9_-]+$/.test(parts[3])) return false;
+  return true;
 }
 
 export async function handlePasswordReset(request, env) {
@@ -59,10 +43,10 @@ export async function handlePasswordReset(request, env) {
 
     const body = await request.json().catch(() => null);
     const username = String(body?.username || '').trim().toLowerCase();
-    const password = String(body?.password || '');
+    const passwordHash = String(body?.password_hash || '');
 
-    if (!username || password.length < 12 || password.length > 128) {
-      return json({ error: 'Usuário e senha válida são obrigatórios. A senha deve ter entre 12 e 128 caracteres.' }, 400);
+    if (!username || !isValidPasswordHash(passwordHash)) {
+      return json({ error: 'Dados de recuperação inválidos.' }, 400);
     }
 
     const row = await env.DB.prepare(
@@ -71,10 +55,8 @@ export async function handlePasswordReset(request, env) {
 
     if (!row) return json({ error: 'Usuário não encontrado.' }, 404);
 
-    const passwordHash = await hashPassword(password);
-
-    // Atualiza somente a coluna necessária. Não depende de status, updated_at,
-    // auditoria ou qualquer outro objeto da instalação legada do D1.
+    // O PBKDF2 é calculado no navegador; o Worker somente valida e grava o hash.
+    // Isso evita estourar o limite de CPU de uma requisição do Worker.
     await env.DB.prepare(
       'UPDATE users SET password_hash=?1 WHERE id=?2'
     ).bind(passwordHash, row.id).run();
