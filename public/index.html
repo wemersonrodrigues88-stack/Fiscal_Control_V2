@@ -15,6 +15,14 @@
 <script src="/carteiras-enhancement.js?v=6" defer></script>
 <script src="/carteiras-preserve-filter.js?v=1" defer></script>
 <script src="/apuracoes-enhancement.js?v=6" defer></script>
+<script>
+(function(){
+  const labels={feito:'Sem diferença',incons_comercial:'Diferença comercial',incons_contabil:'Diferença contábil'};
+  const apply=()=>document.querySelectorAll('.check-options button[data-v]').forEach(b=>{const label=labels[b.dataset.v];if(label&&b.firstChild)b.firstChild.nodeValue=label+' ';});
+  new MutationObserver(apply).observe(document.documentElement,{childList:true,subtree:true});
+  apply();
+})();
+</script>
 <script src="/gestao-enhancement.js?v=3" defer></script>
 <script src="/gestao-vinculos.js?v=1" defer></script>
 <script src="/apuracoes-lock.js?v=1" defer></script>
