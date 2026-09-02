@@ -14,9 +14,20 @@
     '/api/team/options':120000,
     '/api/portfolios':120000
   };
+  const stateView=()=>{
+    const title=document.querySelector('#page-title')?.textContent||'';
+    const map={'Dashboard':'dashboard','Apurações':'apuracoes','Carteiras':'carteiras','Prazos':'prazos','Histórico':'historico','Equipe':'equipe','Gestão':'management'};
+    return map[title]||'full';
+  };
+  const normalize=(input)=>{
+    const raw=typeof input==='string'?input:(input?.url||'');
+    const u=new URL(raw,location.href);
+    if(u.pathname==='/api/state'&&!u.searchParams.has('view'))u.searchParams.set('view',stateView());
+    return u;
+  };
   const keyFor=(url,headers)=>{
     const token=headers?.Authorization||'';
-    return `${url}::${token}`;
+    return `${url.toString()}::${token}`;
   };
   const fetchFresh=(input,init,key)=>{
     const existing=inflight.get(key);
@@ -30,25 +41,26 @@
   };
   window.fetch=async(input,init={})=>{
     const method=String(init?.method||'GET').toUpperCase();
-    const url=typeof input==='string'?input:(input?.url||'');
-    const headers=init?.headers||{};
     if(method!=='GET'){
       cache.clear();
       inflight.clear();
       return originalFetch(input,init);
     }
-    const path=new URL(url,location.href).pathname;
+    const u=normalize(input);
+    const path=u.pathname;
     const ttl=TTL[path];
     if(!ttl)return originalFetch(input,init);
-    const key=keyFor(path,headers);
+    const headers=init?.headers||{};
+    const key=keyFor(u,headers);
+    const requestInput=typeof input==='string'?u.toString():new Request(u.toString(),input);
     const hit=cache.get(key);
     const age=hit?Date.now()-hit.time:Infinity;
     if(hit&&age<ttl)return hit.response.clone();
     if(hit&&age<STALE[path]){
-      fetchFresh(input,init,key).catch(()=>{});
+      fetchFresh(requestInput,init,key).catch(()=>{});
       return hit.response.clone();
     }
-    return fetchFresh(input,init,key);
+    return fetchFresh(requestInput,init,key);
   };
   window.addEventListener('pagehide',()=>{cache.clear();inflight.clear()});
 })();
