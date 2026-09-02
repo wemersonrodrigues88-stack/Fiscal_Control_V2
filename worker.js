@@ -1,25 +1,28 @@
 const JSON_HEADERS = { 'content-type': 'application/json; charset=UTF-8' };
 const TAX = ['ICMS','PIS/COFINS','ISS','SPED ICMS','Fronteiras'];
+const STORE_COLUMNS = {
+  address: 'TEXT', street: 'TEXT', neighborhood: 'TEXT', state: 'TEXT',
+  state_registration: 'TEXT', municipal_registration: 'TEXT'
+};
 
-function json(data, status = 200) {
-  return new Response(JSON.stringify(data), { status, headers: JSON_HEADERS });
-}
+function json(data, status = 200) { return new Response(JSON.stringify(data), { status, headers: JSON_HEADERS }); }
 function unauthorized(){ return json({error:'Não autenticado.'},401); }
-async function sha256(value){
-  const d=await crypto.subtle.digest('SHA-256',new TextEncoder().encode(value));
-  let b=''; for(const x of new Uint8Array(d)) b+=String.fromCharCode(x);
-  return btoa(b).replace(/\+/g,'-').replace(/\//g,'_').replace(/=+$/g,'');
-}
+async function sha256(value){ const d=await crypto.subtle.digest('SHA-256',new TextEncoder().encode(value)); let b=''; for(const x of new Uint8Array(d)) b+=String.fromCharCode(x); return btoa(b).replace(/\+/g,'-').replace(/\//g,'_').replace(/=+$/g,''); }
 async function currentUser(request,env){
-  const auth=request.headers.get('Authorization')||'';
-  if(!auth.startsWith('Bearer ')) return null;
+  const auth=request.headers.get('Authorization')||''; if(!auth.startsWith('Bearer ')) return null;
   const hash=await sha256(auth.slice(7).trim());
   return env.DB.prepare(`SELECT u.id,u.username,u.name,u.status,p.name AS profile,tm.seniority,tm.coordinator_user_id,tm.manager_user_id FROM sessions s JOIN users u ON u.id=s.user_id JOIN profiles p ON p.id=u.profile_id LEFT JOIN team_members tm ON tm.user_id=u.id WHERE s.token_hash=?1 AND s.revoked_at IS NULL AND s.expires_at>CURRENT_TIMESTAMP AND u.status='active'`).bind(hash).first();
 }
 function management(u){return ['Desenvolvedor','Gestão'].includes(u?.profile)}
 async function audit(env,u,request,action,entity=null,id=null){try{await env.DB.prepare(`INSERT INTO audit_log (user_id,request_id,method,path,action,entity_type,entity_id) VALUES (?1,?2,?3,?4,?5,?6,?7)`).bind(u?.id||null,crypto.randomUUID(),request.method,new URL(request.url).pathname,action,entity,id).run()}catch{}}
+async function ensureStoreSchema(env){
+  for(const [column,type] of Object.entries(STORE_COLUMNS)){
+    try{await env.DB.prepare(`ALTER TABLE stores ADD COLUMN ${column} ${type}`).run()}catch{}
+  }
+}
 async function storesQuery(env){
-  const r=await env.DB.prepare(`SELECT s.id,s.code AS number,s.name,s.document AS document,COALESCE(u.name,'') AS analyst FROM stores s LEFT JOIN portfolio_stores ps ON ps.store_id=s.id LEFT JOIN portfolios p ON p.id=ps.portfolio_id LEFT JOIN users u ON u.id=p.owner_user_id AND u.status='active' WHERE s.status='active' ORDER BY s.name`).all();
+  await ensureStoreSchema(env);
+  const r=await env.DB.prepare(`SELECT s.id,s.code AS number,s.name,s.document AS document,s.address,s.street,s.neighborhood,s.state,s.state_registration,s.municipal_registration,COALESCE(u.name,'') AS analyst FROM stores s LEFT JOIN portfolio_stores ps ON ps.store_id=s.id LEFT JOIN portfolios p ON p.id=ps.portfolio_id LEFT JOIN users u ON u.id=p.owner_user_id AND u.status='active' WHERE s.status='active' GROUP BY s.id ORDER BY s.name`).all();
   return r.results||[];
 }
 async function state(env,user){
@@ -30,7 +33,7 @@ async function state(env,user){
     env.DB.prepare(`SELECT d.id,o.name AS obligation,d.due_date,d.status FROM deadlines d JOIN obligations o ON o.id=d.obligation_id ORDER BY d.due_date`).all(),
     env.DB.prepare(`SELECT id,entity_type,entity_id,action,description,created_at FROM history ORDER BY created_at DESC LIMIT 100`).all()
   ]);
-  let visibleStores=stores.results||[];
+  let visibleStores=stores;
   if(['Analista','Assistente'].includes(user.profile)) visibleStores=visibleStores.filter(s=>s.analyst===user.name);
   if(user.profile==='Coordenador'){
     const team=await env.DB.prepare(`SELECT u.name FROM users u JOIN team_members tm ON tm.user_id=u.id WHERE tm.coordinator_user_id=?1 AND u.status='active'`).bind(user.id).all();
@@ -54,6 +57,40 @@ async function updateExecution(request,env,user){
   try{await env.DB.prepare(`INSERT INTO history(user_id,entity_type,entity_id,action,description) VALUES(?1,'execution',?2,'UPDATE',?3)`).bind(user.id,storeId,JSON.stringify({obligation,status})).run()}catch{}
   return json({ok:true});
 }
+async function updateStore(request,env,user){
+  if(!management(user)) return json({error:'Somente Gestão e Desenvolvedor podem editar os dados cadastrais das lojas.'},403);
+  await ensureStoreSchema(env);
+  const url=new URL(request.url); const id=Number(url.pathname.split('/').pop()); if(!id) return json({error:'Loja inválida.'},400);
+  const b=await request.json().catch(()=>null); if(!b) return json({error:'Dados inválidos.'},400);
+  const name=String(b.name||'').trim(); const code=String(b.number||'').trim();
+  if(!name||!code) return json({error:'Número da loja e nome da loja são obrigatórios.'},400);
+  const exists=await env.DB.prepare('SELECT id FROM stores WHERE id=?1').bind(id).first(); if(!exists) return json({error:'Loja não encontrada.'},404);
+  try{
+    await env.DB.prepare(`UPDATE stores SET code=?1,name=?2,document=?3,address=?4,street=?5,neighborhood=?6,state=?7,state_registration=?8,municipal_registration=?9,updated_at=?10 WHERE id=?11`).bind(code,name,String(b.document||''),String(b.address||''),String(b.street||''),String(b.neighborhood||''),String(b.state||''),String(b.state_registration||''),String(b.municipal_registration||''),new Date().toISOString(),id).run();
+    if(b.analyst_id!==undefined && b.analyst_id!==null && String(b.analyst_id)!==''){
+      const analystId=Number(b.analyst_id);
+      const analyst=await env.DB.prepare(`SELECT u.id,u.name FROM users u JOIN profiles p ON p.id=u.profile_id WHERE u.id=?1 AND u.status='active' AND p.name='Analista'`).bind(analystId).first();
+      if(!analyst) return json({error:'Analista inválido.'},400);
+      const links=await env.DB.prepare(`SELECT portfolio_id FROM portfolio_stores WHERE store_id=?1 ORDER BY portfolio_id`).bind(id).all();
+      if((links.results||[]).length){
+        const portfolioId=links.results[0].portfolio_id;
+        await env.DB.prepare('UPDATE portfolios SET owner_user_id=?1 WHERE id=?2').bind(analystId,portfolioId).run();
+        await env.DB.prepare('INSERT OR IGNORE INTO analyst_portfolios(analyst_user_id,portfolio_id) VALUES(?1,?2)').bind(analystId,portfolioId).run();
+        for(const old of links.results.slice(1)) await env.DB.prepare('UPDATE portfolios SET owner_user_id=?1 WHERE id=?2').bind(analystId,old.portfolio_id).run();
+      } else {
+        const portfolioName=`Loja ${code} - ${name}`;
+        const existingPortfolio=await env.DB.prepare('SELECT id FROM portfolios WHERE name=?1').bind(portfolioName).first();
+        let portfolioId=existingPortfolio?.id;
+        if(!portfolioId){const ins=await env.DB.prepare('INSERT INTO portfolios(name,description,owner_user_id) VALUES(?1,?2,?3)').bind(portfolioName,'Carteira vinculada à loja',analystId).run(); portfolioId=ins.meta?.last_row_id;}
+        if(portfolioId){await env.DB.prepare('INSERT OR IGNORE INTO portfolio_stores(portfolio_id,store_id) VALUES(?1,?2)').bind(portfolioId,id).run();await env.DB.prepare('INSERT OR IGNORE INTO analyst_portfolios(analyst_user_id,portfolio_id) VALUES(?1,?2)').bind(analystId,portfolioId).run();}
+      }
+    }
+    await audit(env,user,request,'update_store','store',id);
+    try{await env.DB.prepare(`INSERT INTO history(user_id,entity_type,entity_id,action,description) VALUES(?1,'store',?2,'UPDATE',?3)`).bind(user.id,id,JSON.stringify({name,code})).run()}catch{}
+    const result=await env.DB.prepare(`SELECT s.id,s.code AS number,s.name,s.document AS document,s.address,s.street,s.neighborhood,s.state,s.state_registration,s.municipal_registration,COALESCE(u.name,'') AS analyst FROM stores s LEFT JOIN portfolio_stores ps ON ps.store_id=s.id LEFT JOIN portfolios p ON p.id=ps.portfolio_id LEFT JOIN users u ON u.id=p.owner_user_id AND u.status='active' WHERE s.id=?1 GROUP BY s.id`).bind(id).first();
+    return json({ok:true,data:result});
+  }catch(error){console.error('Store update error:',error);return json({error:'Não foi possível salvar os dados da loja.'},500)}
+}
 async function api(request,env){
   const url=new URL(request.url),path=url.pathname;
   if(!env.DB) return json({error:'Serviço de banco de dados indisponível.'},503);
@@ -67,6 +104,8 @@ async function api(request,env){
     if(!user)return unauthorized();
     if(path==='/api/state'&&request.method==='GET'){await audit(env,user,request,'read_state');return state(env,user)}
     if(path==='/api/executions'&&request.method==='PUT')return updateExecution(request,env,user);
+    if(path==='/api/stores'&&request.method==='GET'){const s=await storesQuery(env);return json({data:s});}
+    if(path.startsWith('/api/stores/')&&request.method==='PUT')return updateStore(request,env,user);
     if(path==='/api/dashboard'&&request.method==='GET'){
       const s=await state(env,user); const d=await s.json(); const visible=d.stores||[]; const done=(d.executions||[]).filter(x=>x.status==='Finalizado').length; const running=(d.executions||[]).filter(x=>x.status==='Analisando').length; return json({data:{activeAnalysts:(d.analysts||[]).length,activeStores:visible.length,obligations:visible.length*TAX.length,pending:Math.max(0,visible.length*TAX.length-done-running),overdue:(d.deadlines||[]).filter(x=>x.status==='late').length}});
     }
@@ -78,7 +117,6 @@ async function api(request,env){
     if(path==='/api/team/options'&&request.method==='GET'){
       if(!management(user))return json({error:'Sem permissão.'},403); const [c,m]=await Promise.all([env.DB.prepare("SELECT u.id,u.name FROM users u JOIN profiles p ON p.id=u.profile_id WHERE u.status='active' AND p.name='Coordenador' ORDER BY u.name").all(),env.DB.prepare("SELECT u.id,u.name FROM users u JOIN profiles p ON p.id=u.profile_id WHERE u.status='active' AND p.name='Gestão' ORDER BY u.name").all()]); return json({coordinators:c.results||[],managers:m.results||[]});
     }
-    if(path==='/api/stores'&&request.method==='GET'){const s=await storesQuery(env);return json({data:s});}
     if(path==='/api/portfolios'&&request.method==='GET'){const r=await env.DB.prepare('SELECT * FROM portfolios ORDER BY name').all();return json({data:r.results||[]});}
     if(path==='/api/management/analysts'&&request.method==='GET'){
       if(!management(user))return json({error:'Sem permissão.'},403); const r=await env.DB.prepare(`SELECT u.id,u.name,tm.seniority,tm.coordinator_user_id,tm.manager_user_id,c.name AS coordinator_name,m.name AS manager_name,COUNT(DISTINCT ap.portfolio_id) AS portfolio_count,(SELECT COUNT(*) FROM obligations o WHERE o.responsible_user_id=u.id) AS obligation_count,(SELECT COUNT(*) FROM obligations o WHERE o.responsible_user_id=u.id AND o.status IN ('pending','in_progress')) AS pending_count,(SELECT COUNT(*) FROM obligations o WHERE o.responsible_user_id=u.id AND o.status='overdue') AS overdue_count FROM users u JOIN profiles p ON p.id=u.profile_id LEFT JOIN team_members tm ON tm.user_id=u.id LEFT JOIN users c ON c.id=tm.coordinator_user_id LEFT JOIN users m ON m.id=tm.manager_user_id LEFT JOIN analyst_portfolios ap ON ap.analyst_user_id=u.id WHERE u.status='active' AND p.name='Analista' GROUP BY u.id,u.name,tm.seniority,tm.coordinator_user_id,tm.manager_user_id,c.name,m.name ORDER BY u.name`).all(); return json({data:r.results||[]});
