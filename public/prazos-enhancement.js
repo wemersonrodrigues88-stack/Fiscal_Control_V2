@@ -1,5 +1,5 @@
 (function(){
-  const TAXES=['ICMS','PIS/COFINS','ISS','SPED ICMS'];
+  const TAXES=['ICMS','PIS/COFINS','ISS','SPED ICMS','Fronteiras'];
   const STATES=['PE','AL','PB','SP'];
   let cache=[];
   const esc=v=>String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
@@ -14,7 +14,7 @@
     if(!visibleStates.length){c.innerHTML='<div class="section-title"><div><h2>Prazos</h2><p class="muted">Nenhum prazo disponível para os estados das suas lojas.</p></div></div><div class="card empty">Nenhum registro encontrado.</div>';return}
     const head=visibleStates.map(s=>`<th>${s}</th>`).join('');
     const rows=TAXES.map(t=>`<tr><td><b>${t}</b></td>${visibleStates.map(s=>`<td>${manager?`<input class="deadline-input" type="date" data-tax="${t}" data-state="${s}" value="${esc(dateFor(t,s))}">`:`<span class="deadline-date">${dateFor(t,s)?new Date(dateFor(t,s)+'T00:00:00').toLocaleDateString('pt-BR'):'Não informado'}</span>`}</td>`).join('')}</tr>`).join('');
-    c.innerHTML=`<div class="section-title"><div><h2>Prazos</h2><p class="muted">${manager?'Preencha os prazos de ICMS, PIS/Cofins, ISS e SPED para PE, AL, PB e SP.':'Consulte os prazos dos estados das suas lojas.'}</p></div>${manager?'<button class="primary" id="save-deadlines">Salvar prazos</button>':''}</div><div class="card"><div class="table-wrap"><table class="deadline-table"><thead><tr><th>Imposto / Obrigação</th>${head}</tr></thead><tbody>${rows}</tbody></table></div></div><div class="card deadline-note"><b>Regra:</b> Gestão e Desenvolvedor administram os 4 estados. Analistas visualizam somente os estados das lojas da própria carteira.</div>`;
+    c.innerHTML=`<div class="section-title"><div><h2>Prazos</h2><p class="muted">${manager?'Preencha os prazos de ICMS, PIS/Cofins, ISS, SPED e Fronteiras para PE, AL, PB e SP.':'Consulte os prazos dos estados das suas lojas.'}</p></div>${manager?'<button class="primary" id="save-deadlines">Salvar prazos</button>':''}</div><div class="card"><div class="table-wrap"><table class="deadline-table"><thead><tr><th>Imposto / Obrigação</th>${head}</tr></thead><tbody>${rows}</tbody></table></div></div><div class="card deadline-note"><b>Regra:</b> Gestão e Desenvolvedor administram os 4 estados. Analistas visualizam somente os estados das lojas da própria carteira.</div>`;
     if(manager)document.querySelector('#save-deadlines').onclick=save;
   }
   async function save(){
