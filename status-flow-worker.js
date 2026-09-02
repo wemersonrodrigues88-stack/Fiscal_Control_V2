@@ -1,7 +1,7 @@
 import baseWorker from './worker-entry.js';
 
 const TAXES=['ICMS','PIS/COFINS','ISS','SPED ICMS','Fronteiras'];
-const CONTROL_PROFILES=['Gestão','Gerente','Coordenador','Desenvolvedor'];
+const CONTROL_PROFILES=['Gestão','Coordenador','Desenvolvedor'];
 const FLOW={Gerando:'Gerando',Query:'Query geradas',Analisando:'Analisando',Finalizando:'Finalizando'};
 
 function json(data,status=200){return new Response(JSON.stringify(data),{status,headers:{'content-type':'application/json; charset=UTF-8','cache-control':'no-store'}})}
