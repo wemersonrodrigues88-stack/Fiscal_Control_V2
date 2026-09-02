@@ -3,6 +3,7 @@ const SITUATIONS=['Ativo','Férias','Licença médica','Desligado','Pediu demiss
 const esc=v=>String(v??'').replace(/[&<>\"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','\"':'&quot;',"'":'&#39;'}[c]));
 let teamCache=[];
 const page=()=>document.querySelector('#page-title')?.textContent.trim()||'';
+const isPage=x=>page()===x;
 const storesBy=n=>(state.data?.stores||[]).filter(s=>s.analyst===n);
 const progress=n=>{const a=storesBy(n),items=state.data?.executions||[],total=a.length*TAX.length;if(!total)return 0;return Math.round(items.filter(x=>x.status==='Finalizado'&&a.some(s=>String(s.id)===String(x.store_id))).length/total*100)};
 async function loadTeam(){teamCache=(await api('/api/team-status')).data||[];return teamCache}
