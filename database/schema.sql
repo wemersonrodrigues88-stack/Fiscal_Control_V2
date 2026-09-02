@@ -33,6 +33,12 @@ CREATE TABLE IF NOT EXISTS stores (
   code TEXT NOT NULL UNIQUE,
   name TEXT NOT NULL,
   document TEXT,
+  address TEXT,
+  street TEXT,
+  neighborhood TEXT,
+  state TEXT,
+  state_registration TEXT,
+  municipal_registration TEXT,
   status TEXT NOT NULL DEFAULT 'active' CHECK (status IN ('active','inactive')),
   created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
   updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
