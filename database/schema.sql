@@ -101,8 +101,7 @@ CREATE TABLE IF NOT EXISTS apurations (
   responsible_user_id INTEGER,
   created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
   updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
-  FOREIGN KEY (obligation_id) REFERENCES obligations(id) ON DELETE CASCADE,
-  FOREIGN KEY (responsible_user_id) REFERENCES users(id)
+  FOREIGN KEY (obligation_id) REFERENCES obligations(id) ON DELETE CASCADE
 );
 
 CREATE TABLE IF NOT EXISTS executions (
@@ -173,6 +172,15 @@ CREATE TABLE IF NOT EXISTS sessions (
   FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
 );
 
+CREATE TABLE IF NOT EXISTS login_challenges (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  token_hash TEXT NOT NULL UNIQUE,
+  user_id INTEGER,
+  expires_at TEXT NOT NULL,
+  created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+);
+
 CREATE INDEX IF NOT EXISTS idx_users_profile ON users(profile_id);
 CREATE INDEX IF NOT EXISTS idx_team_members_coordinator ON team_members(coordinator_user_id);
 CREATE INDEX IF NOT EXISTS idx_team_members_manager ON team_members(manager_user_id);
@@ -184,3 +192,5 @@ CREATE INDEX IF NOT EXISTS idx_history_entity ON history(entity_type, entity_id)
 CREATE INDEX IF NOT EXISTS idx_sessions_token ON sessions(token_hash);
 CREATE INDEX IF NOT EXISTS idx_sessions_user ON sessions(user_id);
 CREATE INDEX IF NOT EXISTS idx_sessions_expiry ON sessions(expires_at);
+CREATE INDEX IF NOT EXISTS idx_login_challenges_token ON login_challenges(token_hash);
+CREATE INDEX IF NOT EXISTS idx_login_challenges_expiry ON login_challenges(expires_at);
