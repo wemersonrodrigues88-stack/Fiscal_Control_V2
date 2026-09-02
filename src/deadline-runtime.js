@@ -1,4 +1,4 @@
-const TAXES = ['ICMS','PIS/COFINS','ISS','SPED ICMS'];
+const TAXES = ['ICMS','PIS/COFINS','ISS','SPED ICMS','Fronteiras'];
 const STATES = ['PE','AL','PB','SP'];
 
 async function sha256(value){
@@ -48,7 +48,7 @@ export async function handleDeadlineRuntime(request,env){
     if(request.method==='GET'){
       if(!states.length) return json({data:[]});
       const placeholders=states.map(()=>'?').join(',');
-      const r=await env.DB.prepare(`SELECT id,obligation,state,due_date,updated_at FROM deadline_configs WHERE state IN (${placeholders}) AND obligation IN ('ICMS','PIS/COFINS','ISS','SPED ICMS') ORDER BY obligation,state`).bind(...states).all();
+      const r=await env.DB.prepare(`SELECT id,obligation,state,due_date,updated_at FROM deadline_configs WHERE state IN (${placeholders}) AND obligation IN ('ICMS','PIS/COFINS','ISS','SPED ICMS','Fronteiras') ORDER BY obligation,state`).bind(...states).all();
       return json({data:r.results||[],states});
     }
     if(request.method==='PUT'){
