@@ -1,14 +1,15 @@
 import app from './worker.js';
 import { handlePasswordReset } from './src/password-reset.js';
 import { handleAuthRuntime } from './src/auth-runtime.js';
+import { handleDeadlineRuntime } from './src/deadline-runtime.js';
 import { prepareStoreRuntime, sortStorePayload } from './src/store-runtime.js';
 
 async function enhanceHtmlResponse(response) {
   const type = response.headers.get('content-type') || '';
   if (!type.includes('text/html')) return response;
   const html = await response.text();
-  const tag = '<script src="/carteiras-enhancement.js" defer></script>';
-  const enhanced = html.includes('/carteiras-enhancement.js') ? html : html.replace('</body>', `${tag}</body>`);
+  const tags = '<script src="/carteiras-enhancement.js" defer></script><script src="/prazos-enhancement.js" defer></script>';
+  const enhanced = html.includes('/prazos-enhancement.js') ? html : html.replace('</body>', `${tags}</body>`);
   const headers = new Headers(response.headers);
   headers.set('content-type', 'text/html; charset=UTF-8');
   return new Response(enhanced, { status: response.status, statusText: response.statusText, headers });
@@ -21,6 +22,9 @@ export default {
 
     const authResponse = await handleAuthRuntime(request, env);
     if (authResponse) return authResponse;
+
+    const deadlineResponse = await handleDeadlineRuntime(request, env);
+    if (deadlineResponse) return deadlineResponse;
 
     const url = new URL(request.url);
     const isStoreWrite = request.method === 'PUT' && /^\/api\/stores\/\d+$/.test(url.pathname);
