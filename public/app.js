@@ -1,295 +1,33 @@
 const app = document.querySelector('#app');
-
-const state = {
-  token: sessionStorage.getItem('fiscal_token'),
-  user: null,
-  page: 'dashboard'
-};
-
 const PASSWORD_ITERATIONS = 120000;
+const TAX = ['ICMS','PIS/COFINS','ISS','SPED ICMS','Fronteiras'];
+const state = { token: sessionStorage.getItem('fiscal_token'), user: null, page: 'dashboard', data: null };
 
-function base64Url(bytes) {
-  let binary = '';
-  for (const byte of bytes) binary += String.fromCharCode(byte);
-  return btoa(binary).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/g, '');
-}
-
-function fromBase64Url(value) {
-  const normalized = String(value || '').replace(/-/g, '+').replace(/_/g, '/') + '='.repeat((4 - String(value || '').length % 4) % 4);
-  const binary = atob(normalized);
-  return Uint8Array.from(binary, c => c.charCodeAt(0));
-}
-
-async function derivePassword(password, saltBase64Url, iterations = PASSWORD_ITERATIONS) {
-  const salt = typeof saltBase64Url === 'string' ? fromBase64Url(saltBase64Url) : saltBase64Url;
-  const key = await crypto.subtle.importKey('raw', new TextEncoder().encode(password), 'PBKDF2', false, ['deriveBits']);
-  const bits = await crypto.subtle.deriveBits(
-    { name: 'PBKDF2', salt, iterations, hash: 'SHA-256' },
-    key,
-    256
-  );
-  return new Uint8Array(bits);
-}
-
-async function buildPasswordHash(password) {
-  const salt = crypto.getRandomValues(new Uint8Array(16));
-  const derived = await derivePassword(password, salt, PASSWORD_ITERATIONS);
-  return `pbkdf2-sha256$${PASSWORD_ITERATIONS}$${base64Url(salt)}$${base64Url(derived)}`;
-}
-
-async function buildLoginProof(password, challenge, salt, iterations) {
-  const derived = await derivePassword(password, salt, iterations);
-  const key = await crypto.subtle.importKey('raw', derived, { name: 'HMAC', hash: 'SHA-256' }, false, ['sign']);
-  const signature = await crypto.subtle.sign('HMAC', key, new TextEncoder().encode(challenge));
-  return base64Url(new Uint8Array(signature));
-}
-
-async function api(path, options = {}) {
-  const headers = { ...(options.headers || {}) };
-  if (state.token) headers.Authorization = `Bearer ${state.token}`;
-  if (options.body && !headers['content-type']) headers['content-type'] = 'application/json';
-  const response = await fetch(path, { ...options, headers });
-  const data = await response.json().catch(() => ({}));
-  if (!response.ok) throw new Error(data.error || `HTTP ${response.status}`);
-  return data;
-}
-
-function renderLogin(message = '') {
-  app.innerHTML = `
-    <main class="login">
-      <section class="login-card">
-        <div class="brand">Fiscal Control</div>
-        <p class="subtitle">Gestão Fiscal Mensal</p>
-        ${message ? `<div class="error">${message}</div>` : ''}
-        <form id="login-form">
-          <div class="field"><label for="username">Usuário</label><input id="username" name="username" autocomplete="username" required></div>
-          <div class="field"><label for="password">Senha</label><input id="password" name="password" type="password" autocomplete="current-password" required></div>
-          <button class="primary" type="submit">Entrar</button>
-        </form>
-      </section>
-    </main>`;
-  document.querySelector('#login-form').addEventListener('submit', login);
-}
-
-async function login(event) {
-  event.preventDefault();
-  const form = new FormData(event.currentTarget);
-  const username = String(form.get('username') || '').trim().toLowerCase();
-  const password = String(form.get('password') || '');
-  const button = event.currentTarget.querySelector('button[type="submit"]');
-  button.disabled = true;
-  button.textContent = 'Entrando...';
-
-  try {
-    const challengeData = await api('/api/auth/challenge', {
-      method: 'POST',
-      body: JSON.stringify({ username })
-    });
-    const proof = await buildLoginProof(password, challengeData.challenge, challengeData.salt, challengeData.iterations);
-    const result = await api('/api/auth/login', {
-      method: 'POST',
-      body: JSON.stringify({ username, challenge: challengeData.challenge, proof })
-    });
-    state.token = result.token;
-    state.user = result.user;
-    sessionStorage.setItem('fiscal_token', state.token);
-    renderShell();
-    await loadPage();
-  } catch (error) {
-    renderLogin(error.message);
-  }
-}
-
-function renderShell() {
-  const management = ['Gestão', 'Desenvolvedor'].includes(state.user.profile);
-  app.innerHTML = `
-    <div class="shell">
-      <aside class="sidebar">
-        <div class="brand">Fiscal Control</div>
-        <nav class="nav">
-          <button data-page="dashboard">Dashboard</button>
-          <button data-page="team">Equipe</button>
-          <button data-page="stores">Lojas</button>
-          <button data-page="portfolios">Carteiras</button>
-          ${management ? '<button data-page="management">Gestão</button>' : ''}
-        </nav>
-        <div style="margin-top:auto"><button id="logout" style="width:100%;background:#263454;color:#fff">Sair</button></div>
-      </aside>
-      <main class="main">
-        <header class="topbar"><h1 id="page-title">Dashboard</h1><div class="user-chip">${state.user.name} · ${state.user.profile}</div></header>
-        <section id="content"></section>
-      </main>
-    </div>`;
-
-  document.querySelectorAll('[data-page]').forEach(btn => btn.addEventListener('click', async () => {
-    state.page = btn.dataset.page;
-    document.querySelectorAll('[data-page]').forEach(b => b.classList.toggle('active', b === btn));
-    await loadPage();
-  }));
-  document.querySelector(`[data-page="${state.page}"]`)?.classList.add('active');
-  document.querySelector('#logout').addEventListener('click', async () => {
-    try { if (state.token) await api('/api/auth/logout', { method: 'POST' }); } catch {}
-    sessionStorage.removeItem('fiscal_token');
-    state.token = null;
-    state.user = null;
-    state.page = 'dashboard';
-    renderLogin();
-  });
-}
-
-function cards(items) {
-  return `<div class="grid">${items.map(([label, value]) => `<article class="card kpi"><div class="label">${label}</div><div class="value">${value ?? 0}</div></article>`).join('')}</div>`;
-}
-
-function escapeHtml(value) {
-  return String(value ?? '').replace(/[&<>'"]/g, c => ({ '&':'&amp;', '<':'&lt;', '>':'&gt;', "'":'&#39;', '"':'&quot;' }[c]));
-}
-
-function table(columns, rows) {
-  if (!rows.length) return '<div class="card empty">Nenhum registro encontrado.</div>';
-  return `<div class="table-wrap"><table><thead><tr>${columns.map(c => `<th>${c[1]}</th>`).join('')}</tr></thead><tbody>${rows.map(row => `<tr>${columns.map(c => `<td>${escapeHtml(row[c[0]] ?? '—')}</td>`).join('')}</tr>`).join('')}</tbody></table></div>`;
-}
-
-function collaboratorForm(options) {
-  const coordinatorOptions = options.coordinators.map(x => `<option value="${x.id}">${escapeHtml(x.name)}</option>`).join('');
-  const managerOptions = options.managers.map(x => `<option value="${x.id}">${escapeHtml(x.name)}</option>`).join('');
-  return `
-    <div class="card form-card">
-      <div class="form-header"><div><h2>Novo colaborador</h2><p class="muted">Cadastre o acesso e a posição do colaborador na hierarquia.</p></div></div>
-      <form id="collaborator-form" class="form-grid">
-        <div class="field"><label for="new-name">Nome</label><input id="new-name" required></div>
-        <div class="field"><label for="new-username">Usuário</label><input id="new-username" autocomplete="off" required></div>
-        <div class="field"><label for="new-password">Senha inicial</label><input id="new-password" type="password" minlength="12" autocomplete="new-password" required><small>Mínimo de 12 caracteres.</small></div>
-        <div class="field"><label for="new-profile">Perfil</label><select id="new-profile" required><option value="">Selecione</option><option>Assistente</option><option>Analista</option><option>Coordenador</option></select></div>
-        <div class="field" id="seniority-field"><label for="new-seniority">Senioridade</label><select id="new-seniority"><option value="">Selecione</option><option value="junior">Júnior</option><option value="pleno">Pleno</option><option value="senior">Sênior</option></select></div>
-        <div class="field" id="coordinator-field"><label for="new-coordinator">Coordenador responsável</label><select id="new-coordinator"><option value="">Selecione</option>${coordinatorOptions}</select></div>
-        <div class="field"><label for="new-manager">Gerente responsável</label><select id="new-manager" required>${managerOptions}</select></div>
-        <div class="form-actions"><button type="button" id="cancel-new">Cancelar</button><button class="primary form-submit" type="submit">Cadastrar colaborador</button></div>
-      </form>
-    </div>`;
-}
-
-function bindCollaboratorForm() {
-  const form = document.querySelector('#collaborator-form');
-  const profile = document.querySelector('#new-profile');
-  const seniorityField = document.querySelector('#seniority-field');
-  const coordinatorField = document.querySelector('#coordinator-field');
-  const coordinator = document.querySelector('#new-coordinator');
-
-  function updateFields() {
-    const isCoordinator = profile.value === 'Coordenador';
-    seniorityField.style.display = isCoordinator ? 'none' : 'grid';
-    coordinatorField.style.display = isCoordinator ? 'none' : 'grid';
-    coordinator.required = !isCoordinator;
-  }
-  profile.addEventListener('change', updateFields);
-  updateFields();
-  document.querySelector('#cancel-new').addEventListener('click', () => loadPage());
-  form.addEventListener('submit', async event => {
-    event.preventDefault();
-    const button = form.querySelector('.form-submit');
-    button.disabled = true;
-    button.textContent = 'Cadastrando...';
-    try {
-      const password = document.querySelector('#new-password').value;
-      const passwordHash = await buildPasswordHash(password);
-      await api('/api/team/create', {
-        method: 'POST',
-        body: JSON.stringify({
-          name: document.querySelector('#new-name').value.trim(),
-          username: document.querySelector('#new-username').value.trim(),
-          password_hash: passwordHash,
-          profile: profile.value,
-          seniority: document.querySelector('#new-seniority').value || null,
-          coordinator_user_id: coordinator.value || null,
-          manager_user_id: document.querySelector('#new-manager').value || null
-        })
-      });
-      state.page = 'management';
-      await loadPage();
-    } catch (error) {
-      alert(error.message);
-      button.disabled = false;
-      button.textContent = 'Cadastrar colaborador';
-    }
-  });
-}
-
-async function loadPage() {
-  const content = document.querySelector('#content');
-  const title = document.querySelector('#page-title');
-  if (!content) return;
-  const titles = { dashboard:'Dashboard', team:'Equipe', stores:'Lojas', portfolios:'Carteiras', management:'Gestão' };
-  title.textContent = titles[state.page] || 'Fiscal Control';
-  content.innerHTML = '<div class="card">Carregando...</div>';
-
-  try {
-    if (state.page === 'dashboard') {
-      const { data } = await api('/api/dashboard');
-      content.innerHTML = `${cards([
-        ['Analistas ativos', data.activeAnalysts], ['Lojas ativas', data.activeStores], ['Obrigações', data.obligations], ['Pendências', data.pending], ['Em atraso', data.overdue]
-      ])}<div class="section"><h2>Visão geral</h2><div class="card">Centralização dos indicadores e acompanhamento da operação fiscal.</div></div>`;
-    }
-
-    if (state.page === 'team') {
-      const { data } = await api('/api/team');
-      content.innerHTML = '<div class="section"><h2>Equipe</h2><p class="muted">Colaboradores autorizados para o seu nível de acesso.</p>' + table([
-        ['name','Colaborador'], ['profile','Perfil'], ['seniority','Senioridade'], ['coordinator_name','Coordenador'], ['manager_name','Gerente'], ['portfolio_count','Carteiras']
-      ], data) + '</div>';
-    }
-
-    if (state.page === 'stores') {
-      const { data } = await api('/api/stores');
-      content.innerHTML = '<div class="section"><h2>Lojas</h2>' + table([
-        ['code','Código'], ['name','Nome'], ['document','Documento'], ['status','Status']
-      ], data) + '</div>';
-    }
-
-    if (state.page === 'portfolios') {
-      const { data } = await api('/api/portfolios');
-      content.innerHTML = '<div class="section"><h2>Carteiras</h2>' + table([
-        ['name','Carteira'], ['description','Descrição']
-      ], data) + '</div>';
-    }
-
-    if (state.page === 'management') {
-      const [{ data }, options] = await Promise.all([api('/api/management/analysts'), api('/api/team/options')]);
-      content.innerHTML = `
-        <div class="section">
-          <div class="section-header"><div><h2>Gestão da equipe</h2><p class="muted">Acompanhamento dos analistas e administração dos acessos.</p></div><button class="primary action-button" id="new-collaborator">+ Novo colaborador</button></div>
-          ${table([
-            ['name','Colaborador'], ['seniority','Senioridade'], ['coordinator_name','Coordenador'], ['manager_name','Gerente'], ['portfolio_count','Carteiras'], ['obligation_count','Obrigações'], ['pending_count','Pendências'], ['overdue_count','Em atraso']
-          ], data)}
-        </div>`;
-      document.querySelector('#new-collaborator').addEventListener('click', () => {
-        content.innerHTML = collaboratorForm(options);
-        bindCollaboratorForm();
-      });
-    }
-  } catch (error) {
-    if (error.message === 'Não autenticado.') {
-      sessionStorage.removeItem('fiscal_token');
-      state.token = null;
-      state.user = null;
-      renderLogin('Sua sessão expirou.');
-      return;
-    }
-    content.innerHTML = `<div class="error">${escapeHtml(error.message)}</div>`;
-  }
-}
-
-async function start() {
-  if (!state.token) return renderLogin();
-  try {
-    const result = await api('/api/auth/me');
-    state.user = result.user;
-    renderShell();
-    await loadPage();
-  } catch {
-    sessionStorage.removeItem('fiscal_token');
-    state.token = null;
-    renderLogin();
-  }
-}
-
+function b64url(bytes){let b='';for(const x of bytes)b+=String.fromCharCode(x);return btoa(b).replace(/\+/g,'-').replace(/\//g,'_').replace(/=+$/g,'')}
+function fromB64url(s){const n=s.replace(/-/g,'+').replace(/_/g,'/')+'='.repeat((4-s.length%4)%4);return Uint8Array.from(atob(n),c=>c.charCodeAt(0))}
+async function derive(password,salt,iterations){const key=await crypto.subtle.importKey('raw',new TextEncoder().encode(password),'PBKDF2',false,['deriveBits']);const bits=await crypto.subtle.deriveBits({name:'PBKDF2',salt,iterations,hash:'SHA-256'},key,256);return new Uint8Array(bits)}
+async function signProof(derived,challenge){const key=await crypto.subtle.importKey('raw',derived,{name:'HMAC',hash:'SHA-256'},false,['sign']);return b64url(new Uint8Array(await crypto.subtle.sign('HMAC',key,new TextEncoder().encode(challenge))))}
+async function api(path,opt={}){const headers={...(opt.headers||{})};if(state.token)headers.Authorization=`Bearer ${state.token}`;if(opt.body&&!headers['content-type'])headers['content-type']='application/json';const r=await fetch(path,{...opt,headers});const data=await r.json().catch(()=>({}));if(!r.ok)throw new Error(data.error||`HTTP ${r.status}`);return data}
+function esc(v){return String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]))}
+function renderLogin(message=''){app.innerHTML=`<main class="login"><section class="login-card"><div class="brand">Fiscal Control</div><p class="subtitle">Gestão Fiscal Mensal</p>${message?`<div class="error">${esc(message)}</div>`:''}<form id="login-form"><div class="field"><label for="username">Usuário</label><input id="username" autocomplete="username" required></div><div class="field"><label for="password">Senha</label><input id="password" type="password" autocomplete="current-password" required></div><button class="primary" type="submit">Entrar</button></form></section></main>`;document.querySelector('#login-form').addEventListener('submit',login)}
+async function login(e){e.preventDefault();const username=document.querySelector('#username').value.trim().toLowerCase();const password=document.querySelector('#password').value;const button=e.currentTarget.querySelector('button');button.disabled=true;button.textContent='Entrando...';try{const c=await fetch('/api/auth/challenge',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({username})});const cd=await c.json().catch(()=>({}));if(!c.ok)throw new Error(cd.error||'Usuário ou senha inválidos.');const salt=fromB64url(cd.salt);const derived=await derive(password,salt,Number(cd.iterations)||PASSWORD_ITERATIONS);const proof=await signProof(derived,cd.challenge);const result=await api('/api/auth/login',{method:'POST',body:JSON.stringify({username,challenge:cd.challenge,proof})});state.token=result.token;state.user=result.user;sessionStorage.setItem('fiscal_token',state.token);state.page='dashboard';await start()}catch(err){renderLogin(err.message)}finally{button.disabled=false;button.textContent='Entrar'}}
+function renderShell(){const management=['Gestão','Desenvolvedor'].includes(state.user.profile);app.innerHTML=`<div class="shell"><aside class="sidebar"><div class="brand">Fiscal Control</div><nav class="nav"><button data-page="dashboard">Dashboard</button><button data-page="apuracoes">Apurações</button><button data-page="carteiras">Carteiras</button><button data-page="prazos">Prazos</button><button data-page="historico">Histórico</button><button data-page="equipe">Equipe</button>${management?'<button data-page="management">Gestão</button>':''}</nav><div class="logout-wrap"><button id="logout">Sair</button></div></aside><main class="main"><header class="topbar"><h1 id="page-title">Dashboard</h1><div class="user-chip">${esc(state.user.name)} · ${esc(state.user.profile)}</div></header><section id="content"></section></main></div>`;document.querySelectorAll('[data-page]').forEach(b=>b.addEventListener('click',async()=>{state.page=b.dataset.page;document.querySelectorAll('[data-page]').forEach(x=>x.classList.toggle('active',x===b));await loadPage()}));document.querySelector(`[data-page="${state.page}"]`)?.classList.add('active');document.querySelector('#logout').onclick=async()=>{try{await api('/api/auth/logout',{method:'POST'})}catch{}sessionStorage.removeItem('fiscal_token');state.token=null;state.user=null;renderLogin()}}
+function cards(items){return `<div class="grid kpis">${items.map(([l,v])=>`<article class="card kpi"><div class="label">${l}</div><div class="value">${v??0}</div></article>`).join('')}</div>`}
+function stores(){return state.data?.stores||[]}
+function analysts(){return state.data?.analysts||[]}
+function executions(){return state.data?.executions||[]}
+function assigned(name){return stores().filter(s=>s.analyst===name)}
+function ex(store,tax){return executions().find(x=>String(x.store_id)===String(store.id)&&x.obligation===tax)?.status||'Pendente'}
+function pct(arr){const total=arr.length*TAX.length;if(!total)return 0;return Math.round(arr.reduce((n,s)=>n+TAX.filter(t=>ex(s,t)==='Finalizado').length,0)/total*100)}
+function table(columns,rows,empty='Nenhum registro encontrado.'){if(!rows.length)return `<div class="card empty">${empty}</div>`;return `<div class="table-wrap"><table><thead><tr>${columns.map(c=>`<th>${c[1]}</th>`).join('')}</tr></thead><tbody>${rows.map(r=>`<tr>${columns.map(c=>`<td>${esc(r[c[0]]??'—')}</td>`).join('')}</tr>`).join('')}</tbody></table></div>`}
+async function loadPage(){const c=document.querySelector('#content');const title=document.querySelector('#page-title');const titles={dashboard:'Dashboard',apuracoes:'Apurações',carteiras:'Carteiras',prazos:'Prazos',historico:'Histórico',equipe:'Equipe',management:'Gestão'};title.textContent=titles[state.page]||'Fiscal Control';c.innerHTML='<div class="card">Carregando...</div>';try{state.data=await api('/api/state');if(state.page==='dashboard')return dashboard(c);if(state.page==='apuracoes')return apuracoes(c);if(state.page==='carteiras')return carteiras(c);if(state.page==='prazos')return prazos(c);if(state.page==='historico')return historico(c);if(state.page==='equipe')return equipe(c);return managementPage(c)}catch(err){if(err.message==='Não autenticado.'){sessionStorage.removeItem('fiscal_token');state.token=null;state.user=null;renderLogin('Sua sessão expirou.');return}c.innerHTML=`<div class="error">${esc(err.message)}</div>`}}
+function dashboard(c){const s=stores();const done=executions().filter(x=>x.status==='Finalizado').length;const running=executions().filter(x=>x.status==='Analisando').length;const pending=Math.max(0,s.length*TAX.length-done-running);c.innerHTML=`<div class="section-title"><div><h2>Controle Fiscal</h2><p class="muted">Acompanhamento online e centralizado da operação fiscal.</p></div></div>${cards([['Analistas ativos',analysts().length],['Lojas ativas',s.length],['Finalizadas',done],['Em andamento',running],['Pendentes',pending]])}<div class="grid two section"><div class="card"><div class="title"><h3>Obrigações</h3><span class="badge blue">Online</span></div>${TAX.map(t=>{const n=s.filter(x=>ex(x,t)==='Finalizado').length;return `<div class="metric"><span>${t}</span><b>${n}/${s.length}</b></div><div class="progress"><i style="width:${s.length?n/s.length*100:0}%"></i></div>`}).join('')}</div><div class="card"><div class="title"><h3>Analistas</h3></div>${analysts().map(a=>`<div class="metric"><span>${esc(a.name)}</span><b>${pct(assigned(a.name))}%</b></div>`).join('')}</div></div>`}
+function apuracoes(c){const s=['Gestão','Desenvolvedor','Coordenador'].includes(state.user.profile)?stores():assigned(state.user.name);c.innerHTML=`<div class="section-title"><div><h2>Apurações</h2><p class="muted">Execução compartilhada online.</p></div></div><div class="grid three">${TAX.map(t=>`<div class="card"><div class="title"><h3>${t}</h3><span class="badge blue">${s.length}</span></div>${s.map(x=>`<div class="metric"><span><b>${esc(x.number)} · ${esc(x.name)}</b><small class="muted"><br>${esc(x.analyst||'Sem carteira')}</small></span><button class="badge ${ex(x,t)==='Finalizado'?'green':ex(x,t)==='Analisando'?'blue':'yellow'} status-btn" data-store="${x.id}" data-tax="${t}">${ex(x,t)}</button></div>`).join('')}</div>`).join('')}</div>`;c.querySelectorAll('.status-btn').forEach(b=>b.onclick=async()=>{const next=b.textContent==='Pendente'?'Analisando':b.textContent==='Analisando'?'Finalizado':'Pendente';b.disabled=true;try{await api('/api/executions',{method:'PUT',body:JSON.stringify({store_id:b.dataset.store,obligation:b.dataset.tax,status:next})});state.data=await api('/api/state');apuracoes(c)}catch(e){alert(e.message);b.disabled=false}})}
+function carteiras(c){const s=['Gestão','Desenvolvedor','Coordenador'].includes(state.user.profile)?stores():assigned(state.user.name);c.innerHTML=`<div class="section-title"><div><h2>Carteiras</h2><p class="muted">Carteiras e lojas vinculadas aos analistas.</p></div></div>${table([['number','Número'],['name','Loja'],['document','Documento'],['analyst','Analista']],s)}`}
+function prazos(c){c.innerHTML=`<div class="section-title"><div><h2>Prazos</h2><p class="muted">Acompanhamento dos prazos fiscais cadastrados.</p></div></div>${table([['obligation','Obrigação'],['due_date','Vencimento'],['status','Status']],state.data.deadlines||[])}`}
+function historico(c){c.innerHTML=`<div class="section-title"><div><h2>Histórico</h2><p class="muted">Registro das movimentações do sistema.</p></div></div>${table([['created_at','Data'],['action','Ação'],['entity_type','Entidade'],['description','Descrição']],state.data.history||[])}`}
+function equipe(c){const rows=state.data.analysts||[];c.innerHTML=`<div class="section-title"><div><h2>Equipe</h2><p class="muted">Colaboradores ativos e carteiras.</p></div></div>${table([['name','Colaborador'],['level','Nível'],['status','Situação']],rows)}`}
+function managementPage(c){const can=['Gestão','Desenvolvedor'].includes(state.user.profile);c.innerHTML=`<div class="section-title"><div><h2>Gestão da equipe</h2><p class="muted">Acompanhamento individual e administração dos acessos.</p></div>${can?'<button class="primary action-button" id="new-collaborator">+ Novo colaborador</button>':''}</div><div class="grid kpis">${[['Analistas ativos',analysts().length],['Lojas ativas',stores().length],['Conclusão geral',pct(stores())+'%'],['Alertas',(state.data.deadlines||[]).filter(x=>x.status==='late').length],['Carteiras',analysts().filter(a=>assigned(a.name).length).length]].map(x=>`<div class="card kpi"><div class="label">${x[0]}</div><div class="value">${x[1]}</div></div>`).join('')} </div><div class="card section"><div class="title"><h3>Acompanhamento individual</h3><span class="badge blue">Analistas ativos</span></div><div class="grid three">${analysts().map(a=>`<button class="analyst" data-name="${esc(a.name)}"><b>${esc(a.name)}</b><small>${esc(a.level||'')} · ${assigned(a.name).length} lojas · ${pct(assigned(a.name))}%</small></button>`).join('')}</div><div id="individual" class="section"></div></div>`;c.querySelectorAll('.analyst').forEach(b=>b.onclick=()=>{document.querySelectorAll('.analyst').forEach(x=>x.classList.remove('active'));b.classList.add('active');const s=assigned(b.dataset.name);document.querySelector('#individual').innerHTML=table([['number','Loja'],['name','Nome'],['document','Documento']],s,'Nenhuma loja vinculada a este analista.')});c.querySelector('#new-collaborator')?.addEventListener('click',async()=>{const options=await api('/api/team/options');renderCollaboratorForm(c,options)})}
+function renderCollaboratorForm(c,options){const co=(options.coordinators||[]).map(x=>`<option value="${x.id}">${esc(x.name)}</option>`).join('');const ma=(options.managers||[]).map(x=>`<option value="${x.id}">${esc(x.name)}</option>`).join('');c.innerHTML=`<div class="card form-card"><div class="form-header"><div><h2>Novo colaborador</h2><p class="muted">Cadastre acesso, perfil e posição na hierarquia.</p></div></div><form id="collaborator-form" class="form-grid"><div class="field"><label>Nome</label><input id="new-name" required></div><div class="field"><label>Usuário</label><input id="new-username" required></div><div class="field"><label>Senha inicial</label><input id="new-password" type="password" minlength="12" required><small>Mínimo de 12 caracteres.</small></div><div class="field"><label>Perfil</label><select id="new-profile" required><option value="">Selecione</option><option>Assistente</option><option>Analista</option><option>Coordenador</option></select></div><div class="field" id="seniority-field"><label>Senioridade</label><select id="new-seniority"><option value="">Selecione</option><option value="junior">Júnior</option><option value="pleno">Pleno</option><option value="senior">Sênior</option></select></div><div class="field" id="coordinator-field"><label>Coordenador responsável</label><select id="new-coordinator"><option value="">Selecione</option>${co}</select></div><div class="field"><label>Gerente responsável</label><select id="new-manager" required>${ma}</select></div><div class="form-actions"><button type="button" id="cancel-new">Cancelar</button><button class="primary form-submit" type="submit">Cadastrar colaborador</button></div></form></div>`;const form=document.querySelector('#collaborator-form');const profile=document.querySelector('#new-profile');const sf=document.querySelector('#seniority-field');const cf=document.querySelector('#coordinator-field');const coord=document.querySelector('#new-coordinator');const update=()=>{const coo=profile.value==='Coordenador';sf.style.display=coo?'none':'grid';cf.style.display=coo?'none':'grid';coord.required=!coo};profile.onchange=update;update();document.querySelector('#cancel-new').onclick=loadPage;form.onsubmit=async e=>{e.preventDefault();const btn=form.querySelector('.form-submit');btn.disabled=true;btn.textContent='Cadastrando...';try{const password=document.querySelector('#new-password').value;const salt=crypto.getRandomValues(new Uint8Array(16));const derived=await derive(password,salt,PASSWORD_ITERATIONS);const passwordHash=`pbkdf2-sha256$${PASSWORD_ITERATIONS}$${b64url(salt)}$${b64url(derived)}`;await api('/api/team/create',{method:'POST',body:JSON.stringify({name:document.querySelector('#new-name').value.trim(),username:document.querySelector('#new-username').value.trim(),password_hash:passwordHash,profile:profile.value,seniority:document.querySelector('#new-seniority').value||null,coordinator_user_id:coord.value||null,manager_user_id:document.querySelector('#new-manager').value||null})});state.page='management';await loadPage()}catch(err){alert(err.message);btn.disabled=false;btn.textContent='Cadastrar colaborador'}}}
+async function start(){if(!state.token)return renderLogin();try{const r=await api('/api/auth/me');state.user=r.user;renderShell();await loadPage()}catch{sessionStorage.removeItem('fiscal_token');state.token=null;renderLogin()}}
 start();
