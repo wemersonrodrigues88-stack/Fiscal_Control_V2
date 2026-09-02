@@ -1,0 +1,252 @@
+const JSON_HEADERS = { 'content-type': 'application/json; charset=UTF-8' };
+const PASSWORD_ITERATIONS = 120000;
+const CHALLENGE_TTL_SECONDS = 120;
+
+function json(data, status = 200) {
+  return new Response(JSON.stringify(data), { status, headers: JSON_HEADERS });
+}
+
+function base64Url(bytes) {
+  let binary = '';
+  for (const byte of bytes) binary += String.fromCharCode(byte);
+  return btoa(binary).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/g, '');
+}
+
+function fromBase64Url(value) {
+  const normalized = String(value || '').replace(/-/g, '+').replace(/_/g, '/') + '='.repeat((4 - String(value || '').length % 4) % 4);
+  const binary = atob(normalized);
+  return Uint8Array.from(binary, c => c.charCodeAt(0));
+}
+
+function constantTimeEqual(a, b) {
+  if (a.length !== b.length) return false;
+  let diff = 0;
+  for (let i = 0; i < a.length; i++) diff |= a[i] ^ b[i];
+  return diff === 0;
+}
+
+async function sha256Base64UrlBytes(bytes) {
+  const digest = await crypto.subtle.digest('SHA-256', bytes);
+  return base64Url(new Uint8Array(digest));
+}
+
+async function sha256Base64Url(value) {
+  return sha256Base64UrlBytes(new TextEncoder().encode(value));
+}
+
+function parsePasswordHash(value) {
+  const parts = String(value || '').split('$');
+  if (parts.length !== 4 || parts[0] !== 'pbkdf2-sha256') return null;
+  const iterations = Number(parts[1]);
+  if (!Number.isInteger(iterations) || iterations < 100000 || iterations > 500000) return null;
+  try {
+    const salt = fromBase64Url(parts[2]);
+    const derived = fromBase64Url(parts[3]);
+    if (salt.length !== 16 || derived.length !== 32) return null;
+    return { iterations, salt, derived };
+  } catch {
+    return null;
+  }
+}
+
+async function ensureChallengeTable(env) {
+  await env.DB.prepare(`
+    CREATE TABLE IF NOT EXISTS login_challenges (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      token_hash TEXT NOT NULL UNIQUE,
+      user_id INTEGER,
+      expires_at TEXT NOT NULL,
+      created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+    )
+  `).run();
+  await env.DB.prepare('DELETE FROM login_challenges WHERE expires_at<=CURRENT_TIMESTAMP').run();
+}
+
+async function createChallenge(env, userId) {
+  const token = base64Url(crypto.getRandomValues(new Uint8Array(32)));
+  const tokenHash = await sha256Base64Url(token);
+  const expiresAt = new Date(Date.now() + CHALLENGE_TTL_SECONDS * 1000).toISOString();
+  await env.DB.prepare('INSERT INTO login_challenges (token_hash,user_id,expires_at) VALUES (?1,?2,?3)')
+    .bind(tokenHash, userId ?? null, expiresAt).run();
+  return token;
+}
+
+async function getCurrentUser(request, env) {
+  const auth = request.headers.get('Authorization');
+  if (!auth || !auth.startsWith('Bearer ')) return null;
+  const token = auth.slice(7).trim();
+  if (!token) return null;
+  const tokenHash = await sha256Base64Url(token);
+  return env.DB.prepare(`
+    SELECT u.id,u.username,u.name,u.status,p.name AS profile,
+           tm.seniority,tm.coordinator_user_id,tm.manager_user_id
+    FROM sessions s
+    JOIN users u ON u.id=s.user_id
+    JOIN profiles p ON p.id=u.profile_id
+    LEFT JOIN team_members tm ON tm.user_id=u.id
+    WHERE s.token_hash=?1 AND s.revoked_at IS NULL
+      AND s.expires_at>CURRENT_TIMESTAMP AND u.status='active'
+  `).bind(tokenHash).first();
+}
+
+function isManagement(user) {
+  return ['Desenvolvedor', 'Gestão'].includes(user?.profile);
+}
+
+async function auditSafe(env, user, request, action, entityType = null, entityId = null) {
+  try {
+    await env.DB.prepare(`INSERT INTO audit_log (user_id,request_id,method,path,action,entity_type,entity_id) VALUES (?1,?2,?3,?4,?5,?6,?7)`)
+      .bind(user?.id ?? null, crypto.randomUUID(), request.method, new URL(request.url).pathname, action, entityType, entityId).run();
+  } catch (error) {
+    console.warn('Audit log skipped:', error?.message || error);
+  }
+}
+
+async function createSession(env, userId) {
+  const token = base64Url(crypto.getRandomValues(new Uint8Array(32)));
+  const tokenHash = await sha256Base64Url(token);
+  const expiresAt = new Date(Date.now() + 8 * 60 * 60 * 1000).toISOString();
+  await env.DB.prepare('INSERT INTO sessions (user_id,token_hash,expires_at) VALUES (?1,?2,?3)')
+    .bind(userId, tokenHash, expiresAt).run();
+  return token;
+}
+
+export async function handleAuthRuntime(request, env) {
+  const url = new URL(request.url);
+  const path = url.pathname;
+
+  if (path === '/api/auth/challenge' && request.method === 'POST') {
+    try {
+      if (!env.DB) return json({ error: 'Serviço de autenticação indisponível.' }, 503);
+      const body = await request.json().catch(() => null);
+      const username = String(body?.username || '').trim().toLowerCase();
+      if (!username || username.length > 120) return json({ error: 'Usuário ou senha inválidos.' }, 401);
+
+      await ensureChallengeTable(env);
+      const row = await env.DB.prepare(`
+        SELECT u.id,u.password_hash
+        FROM users u
+        WHERE u.username=?1 AND u.status='active'
+        LIMIT 1
+      `).bind(username).first();
+
+      const parsed = parsePasswordHash(row?.password_hash);
+      const userId = parsed ? row.id : null;
+      const salt = parsed ? parsed.salt : crypto.getRandomValues(new Uint8Array(16));
+      const iterations = parsed ? parsed.iterations : PASSWORD_ITERATIONS;
+      const challenge = await createChallenge(env, userId);
+
+      return json({ challenge, salt: base64Url(salt), iterations });
+    } catch (error) {
+      console.error('Login challenge failed:', error);
+      return json({ error: 'Não foi possível iniciar a autenticação.' }, 500);
+    }
+  }
+
+  if (path === '/api/auth/login' && request.method === 'POST') {
+    try {
+      if (!env.DB) return json({ error: 'Serviço de autenticação indisponível.' }, 503);
+      const body = await request.json().catch(() => null);
+      const username = String(body?.username || '').trim().toLowerCase();
+      const challenge = String(body?.challenge || '');
+      const proof = String(body?.proof || '');
+      if (!username || !challenge || !proof || challenge.length > 100 || proof.length > 100) {
+        return json({ error: 'Usuário ou senha inválidos.' }, 401);
+      }
+
+      const challengeHash = await sha256Base64Url(challenge);
+      const row = await env.DB.prepare(`
+        SELECT lc.id AS challenge_id,lc.user_id,lc.expires_at,
+               u.id,u.username,u.name,u.status,u.password_hash,p.name AS profile
+        FROM login_challenges lc
+        LEFT JOIN users u ON u.id=lc.user_id
+        LEFT JOIN profiles p ON p.id=u.profile_id
+        WHERE lc.token_hash=?1 AND lc.expires_at>CURRENT_TIMESTAMP
+        LIMIT 1
+      `).bind(challengeHash).first();
+
+      if (!row || row.username !== username || row.status !== 'active') {
+        await env.DB.prepare('DELETE FROM login_challenges WHERE token_hash=?1').bind(challengeHash).run();
+        return json({ error: 'Usuário ou senha inválidos.' }, 401);
+      }
+
+      const parsed = parsePasswordHash(row.password_hash);
+      let valid = false;
+      if (parsed) {
+        try {
+          const key = await crypto.subtle.importKey(
+            'raw',
+            parsed.derived,
+            { name: 'HMAC', hash: 'SHA-256' },
+            false,
+            ['verify']
+          );
+          valid = await crypto.subtle.verify('HMAC', key, fromBase64Url(proof), new TextEncoder().encode(challenge));
+        } catch {
+          valid = false;
+        }
+      }
+
+      await env.DB.prepare('DELETE FROM login_challenges WHERE token_hash=?1').bind(challengeHash).run();
+      if (!valid) return json({ error: 'Usuário ou senha inválidos.' }, 401);
+
+      await env.DB.prepare('DELETE FROM sessions WHERE expires_at<=CURRENT_TIMESTAMP OR revoked_at IS NOT NULL').run();
+      const token = await createSession(env, row.id);
+      await auditSafe(env, row, request, 'login');
+      return json({ token, user: { id: row.id, username: row.username, name: row.name, profile: row.profile } });
+    } catch (error) {
+      console.error('Login failed:', error);
+      return json({ error: 'Não foi possível concluir o login neste momento.' }, 500);
+    }
+  }
+
+  if (path === '/api/team/create' && request.method === 'POST') {
+    try {
+      if (!env.DB) return json({ error: 'Serviço de banco de dados indisponível.' }, 503);
+      const user = await getCurrentUser(request, env);
+      if (!user) return json({ error: 'Não autenticado.' }, 401);
+      if (!isManagement(user)) return json({ error: 'Sem permissão.' }, 403);
+
+      const body = await request.json().catch(() => null);
+      const name = String(body?.name || '').trim();
+      const username = String(body?.username || '').trim().toLowerCase();
+      const profile = String(body?.profile || '').trim();
+      const seniority = body?.seniority ? String(body.seniority).trim().toLowerCase() : null;
+      const passwordHash = String(body?.password_hash || '');
+      const coordinatorUserId = body?.coordinator_user_id ? Number(body.coordinator_user_id) : null;
+      const managerUserId = body?.manager_user_id ? Number(body.manager_user_id) : user.profile === 'Gestão' ? user.id : null;
+
+      if (!name || !username || !passwordHash) return json({ error: 'Nome, usuário e senha são obrigatórios.' }, 400);
+      if (!['Assistente', 'Analista', 'Coordenador'].includes(profile)) return json({ error: 'Perfil inválido.' }, 400);
+      if (!parsePasswordHash(passwordHash)) return json({ error: 'A senha inicial não pôde ser processada.' }, 400);
+      if (seniority && !['junior', 'pleno', 'senior'].includes(seniority)) return json({ error: 'Senioridade inválida.' }, 400);
+      if ((profile === 'Analista' || profile === 'Assistente') && !coordinatorUserId) return json({ error: 'Informe o coordenador responsável.' }, 400);
+      if (!managerUserId) return json({ error: 'Informe o gerente responsável.' }, 400);
+
+      const profileRow = await env.DB.prepare('SELECT id FROM profiles WHERE name=?1').bind(profile).first();
+      if (!profileRow) return json({ error: 'Perfil não configurado.' }, 500);
+      const duplicate = await env.DB.prepare('SELECT id FROM users WHERE username=?1').bind(username).first();
+      if (duplicate) return json({ error: 'Este usuário já existe.' }, 409);
+
+      const insertUser = await env.DB.prepare('INSERT INTO users (username,password_hash,name,profile_id,status) VALUES (?1,?2,?3,?4,\'active\')')
+        .bind(username, passwordHash, name, profileRow.id).run();
+      const newUserId = insertUser.meta.last_row_id;
+
+      await env.DB.prepare('INSERT INTO team_members (user_id,seniority,coordinator_user_id,manager_user_id) VALUES (?1,?2,?3,?4)')
+        .bind(newUserId, profile === 'Coordenador' ? null : seniority, profile === 'Coordenador' ? null : coordinatorUserId, managerUserId).run();
+
+      if (profile === 'Analista') {
+        await env.DB.prepare('INSERT OR IGNORE INTO analysts (user_id,seniority,coordinator_user_id,manager_user_id) VALUES (?1,?2,?3,?4)')
+          .bind(newUserId, seniority, coordinatorUserId, managerUserId).run();
+      }
+      await auditSafe(env, user, request, 'create_team_member', 'user', newUserId);
+      return json({ ok: true, user_id: newUserId }, 201);
+    } catch (error) {
+      console.error('Team member creation failed:', error);
+      return json({ error: 'Não foi possível cadastrar o colaborador neste momento.' }, 500);
+    }
+  }
+
+  return null;
+}
