@@ -13,7 +13,7 @@ async function currentUser(request,env){
   const hash=await sha256(auth.slice(7).trim());
   return env.DB.prepare(`SELECT u.id,u.username,u.name,u.status,p.name AS profile,tm.seniority,tm.coordinator_user_id,tm.manager_user_id FROM sessions s JOIN users u ON u.id=s.user_id JOIN profiles p ON p.id=u.profile_id LEFT JOIN team_members tm ON tm.user_id=u.id WHERE s.token_hash=?1 AND s.revoked_at IS NULL AND s.expires_at>CURRENT_TIMESTAMP AND u.status='active'`).bind(hash).first();
 }
-function management(u){return ['Desenvolvedor','Gestão'].includes(u?.profile)}
+function management(u){return ['Desenvolvedor','Gestão','Coordenador'].includes(u?.profile)}
 async function audit(env,u,request,action,entity=null,id=null){try{await env.DB.prepare(`INSERT INTO audit_log (user_id,request_id,method,path,action,entity_type,entity_id) VALUES (?1,?2,?3,?4,?5,?6,?7)`).bind(u?.id||null,crypto.randomUUID(),request.method,new URL(request.url).pathname,action,entity,id).run()}catch{}}
 async function ensureStoreSchema(env){
   for(const [column,type] of Object.entries(STORE_COLUMNS)){
@@ -34,10 +34,6 @@ async function state(env,user){
   ]);
   let visibleStores=stores;
   if(['Analista','Assistente'].includes(user.profile)) visibleStores=visibleStores.filter(s=>s.analyst===user.name);
-  if(user.profile==='Coordenador'){
-    const team=await env.DB.prepare(`SELECT u.name FROM users u JOIN team_members tm ON tm.user_id=u.id WHERE tm.coordinator_user_id=?1 AND u.status='active'`).bind(user.id).all();
-    const names=new Set([user.name,...(team.results||[]).map(x=>x.name)]); visibleStores=visibleStores.filter(s=>names.has(s.analyst));
-  }
   const visibleIds=new Set(visibleStores.map(s=>String(s.id)));
   const executions=(execs.results||[]).filter(x=>visibleIds.has(String(x.store_id)));
   return json({user,analysts:analysts.results||[],stores:visibleStores,executions,deadlines:deadlines.results||[],history:history.results||[],obligations:TAX});
@@ -110,7 +106,7 @@ async function api(request,env){
     }
     if(path==='/api/team'&&request.method==='GET'){
       let sql=`SELECT u.id,u.name,u.username,p.name AS profile,tm.seniority,tm.coordinator_user_id,tm.manager_user_id,c.name AS coordinator_name,m.name AS manager_name,COUNT(DISTINCT ap.portfolio_id) AS portfolio_count FROM users u JOIN profiles p ON p.id=u.profile_id LEFT JOIN team_members tm ON tm.user_id=u.id LEFT JOIN users c ON c.id=tm.coordinator_user_id LEFT JOIN users m ON m.id=tm.manager_user_id LEFT JOIN analyst_portfolios ap ON ap.analyst_user_id=u.id WHERE u.status='active'`;
-      const params=[]; if(user.profile==='Coordenador'){sql+=' AND (u.id=?1 OR tm.coordinator_user_id=?1)';params.push(user.id)} else if(['Analista','Assistente'].includes(user.profile)){sql+=' AND u.id=?1';params.push(user.id)} sql+=` GROUP BY u.id,u.name,u.username,p.name,tm.seniority,tm.coordinator_user_id,tm.manager_user_id,c.name,m.name ORDER BY u.name`;
+      const params=[]; if(['Analista','Assistente'].includes(user.profile)){sql+=' AND u.id=?1';params.push(user.id)} sql+=` GROUP BY u.id,u.name,u.username,p.name,tm.seniority,tm.coordinator_user_id,tm.manager_user_id,c.name,m.name ORDER BY u.name`;
       const r=params.length?await env.DB.prepare(sql).bind(...params).all():await env.DB.prepare(sql).all(); return json({data:r.results||[]});
     }
     if(path==='/api/team/options'&&request.method==='GET'){
