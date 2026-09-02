@@ -24,13 +24,15 @@ async function visibleStores(env,user){
   return visibleStores;
 }
 async function state(env,user,view='full'){
+  const needsStores=['full','dashboard','apuracoes','carteiras','management'].includes(view);
+  const needsAnalysts=['full','dashboard','management'].includes(view);
   const [stores,analysts]=await Promise.all([
-    visibleStores(env,user),
-    view==='prazos'||view==='historico'||view==='apuracoes'?Promise.resolve({results:[]}):env.DB.prepare(`SELECT u.id,u.name,tm.seniority AS level,'Ativo' AS status FROM users u JOIN profiles p ON p.id=u.profile_id LEFT JOIN team_members tm ON tm.user_id=u.id WHERE u.status='active' AND p.name='Analista' ORDER BY u.name`).all()
+    needsStores?visibleStores(env,user):Promise.resolve([]),
+    needsAnalysts?env.DB.prepare(`SELECT u.id,u.name,tm.seniority AS level,'Ativo' AS status FROM users u JOIN profiles p ON p.id=u.profile_id LEFT JOIN team_members tm ON tm.user_id=u.id WHERE u.status='active' AND p.name='Analista' ORDER BY u.name`).all():Promise.resolve({results:[]})
   ]);
   const visibleIds=new Set(stores.map(s=>String(s.id)));
   let executions=[]; let deadlines=[]; let history=[];
-  if(['full','dashboard','apuracoes','carteiras','management'].includes(view)){
+  if(['full','dashboard','apuracoes','management'].includes(view)){
     const r=await env.DB.prepare(`SELECT o.id,o.store_id,o.name AS obligation,o.status,o.updated_at,o.responsible_user_id FROM obligations o WHERE o.id IN (SELECT MAX(id) FROM obligations GROUP BY store_id,name)`).all();
     executions=(r.results||[]).filter(x=>visibleIds.has(String(x.store_id)));
   }
@@ -89,7 +91,7 @@ async function updateStore(request,env,user){
     return json({ok:true,data:result});
   }catch(error){console.error('Store update error:',error);return json({error:'Não foi possível salvar os dados da loja.'},500)}
 }
-async function api(request,env){
+async function api(request,env,ctx){
   const url=new URL(request.url),path=url.pathname;
   if(!env.DB) return json({error:'Serviço de banco de dados indisponível.'},503);
   try{
@@ -100,9 +102,12 @@ async function api(request,env){
       if(!user)return unauthorized(); const auth=request.headers.get('Authorization')||''; if(auth.startsWith('Bearer ')){const h=await sha256(auth.slice(7).trim());await env.DB.prepare('UPDATE sessions SET revoked_at=CURRENT_TIMESTAMP WHERE token_hash=?1').bind(h).run();} return json({ok:true});
     }
     if(!user)return unauthorized();
-    if(path==='/api/state'&&request.method==='GET'){await audit(env,user,request,'read_state');const view=url.searchParams.get('view')||'full';return state(env,user,view)}
+    if(path==='/api/state'&&request.method==='GET'){
+      if(ctx?.waitUntil) ctx.waitUntil(audit(env,user,request,'read_state')); else await audit(env,user,request,'read_state');
+      const view=url.searchParams.get('view')||'full';return state(env,user,view)
+    }
     if(path==='/api/executions'&&request.method==='PUT')return updateExecution(request,env,user);
-    if(path==='/api/stores'&&request.method==='GET'){const s=await visibleStores(env,user);return json({data:s});}
+    if(path==='/api/stores'&&request.method==='GET'){const s=await storesQuery(env);return json({data:s});}
     if(path.startsWith('/api/stores/')&&request.method==='PUT')return updateStore(request,env,user);
     if(path==='/api/dashboard'&&request.method==='GET'){
       const stores=await visibleStores(env,user); const ids=stores.map(x=>x.id); const q=ids.length?ids.map(()=>'?').join(','):null;
@@ -123,4 +128,4 @@ async function api(request,env){
     return json({error:'Rota não encontrada.'},404);
   }catch(error){console.error('API error:',error);return json({error:'Erro interno do servidor.'},500)}
 }
-export default {fetch(request,env){return api(request,env)}};
+export default {fetch(request,env,ctx){return api(request,env,ctx)}};
