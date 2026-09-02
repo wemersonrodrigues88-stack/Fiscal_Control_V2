@@ -59,15 +59,24 @@
 
       const stateSelect = bar.querySelector('#carteiras-state-filter');
       const analystSelect = bar.querySelector('#carteiras-analyst-filter');
-      const states = new Set();
-      const analysts = new Set();
-      getRows().forEach(row => {
-        const cells = row.querySelectorAll('td');
-        if (cells[2]) states.add(cells[2].textContent.trim());
-        if (cells[4]) analysts.add(cells[4].textContent.trim());
-      });
-      [...states].filter(Boolean).sort((a,b)=>a.localeCompare(b,'pt-BR')).forEach(v => stateSelect.insertAdjacentHTML('beforeend', `<option value="${esc(v)}">${esc(v)}</option>`));
-      [...analysts].filter(Boolean).sort((a,b)=>a.localeCompare(b,'pt-BR')).forEach(v => analystSelect.insertAdjacentHTML('beforeend', `<option value="${esc(v)}">${esc(v)}</option>`));
+
+      const refreshOptions = () => {
+        const currentState = stateSelect.value;
+        const currentAnalyst = analystSelect.value;
+        const states = new Set();
+        const analysts = new Set();
+        getRows().forEach(row => {
+          const cells = row.querySelectorAll('td');
+          if (cells[2]) states.add(cells[2].textContent.trim());
+          if (cells[4]) analysts.add(cells[4].textContent.trim());
+        });
+        stateSelect.innerHTML = '<option value="">Todos os estados</option>';
+        analystSelect.innerHTML = '<option value="">Todos os analistas</option>';
+        [...states].filter(Boolean).sort((a,b)=>a.localeCompare(b,'pt-BR')).forEach(v => stateSelect.insertAdjacentHTML('beforeend', `<option value="${esc(v)}">${esc(v)}</option>`));
+        [...analysts].filter(Boolean).sort((a,b)=>a.localeCompare(b,'pt-BR')).forEach(v => analystSelect.insertAdjacentHTML('beforeend', `<option value="${esc(v)}">${esc(v)}</option>`));
+        if ([...stateSelect.options].some(o => o.value === currentState)) stateSelect.value = currentState;
+        if ([...analystSelect.options].some(o => o.value === currentAnalyst)) analystSelect.value = currentAnalyst;
+      };
 
       const apply = () => {
         const state = stateSelect.value;
@@ -79,6 +88,7 @@
           row.style.display = (!state || rowState === state) && (!analyst || rowAnalyst === analyst) ? '' : 'none';
         });
       };
+
       stateSelect.onchange = apply;
       analystSelect.onchange = apply;
       bar.querySelector('#carteiras-clear-filter').onclick = () => { stateSelect.value=''; analystSelect.value=''; apply(); };
@@ -95,6 +105,28 @@
         document.title = old;
         setTimeout(() => document.body.classList.remove('print-carteiras'), 500);
       };
+
+      refreshOptions();
+    } else {
+      // Rebuild filter options when the SPA replaces the table data.
+      const stateSelect = bar.querySelector('#carteiras-state-filter');
+      const analystSelect = bar.querySelector('#carteiras-analyst-filter');
+      if (stateSelect && analystSelect) {
+        const currentState = stateSelect.value;
+        const currentAnalyst = analystSelect.value;
+        const states = new Set(), analysts = new Set();
+        getRows().forEach(row => {
+          const cells = row.querySelectorAll('td');
+          if (cells[2]) states.add(cells[2].textContent.trim());
+          if (cells[4]) analysts.add(cells[4].textContent.trim());
+        });
+        stateSelect.innerHTML = '<option value="">Todos os estados</option>';
+        analystSelect.innerHTML = '<option value="">Todos os analistas</option>';
+        [...states].filter(Boolean).sort((a,b)=>a.localeCompare(b,'pt-BR')).forEach(v => stateSelect.insertAdjacentHTML('beforeend', `<option value="${esc(v)}">${esc(v)}</option>`));
+        [...analysts].filter(Boolean).sort((a,b)=>a.localeCompare(b,'pt-BR')).forEach(v => analystSelect.insertAdjacentHTML('beforeend', `<option value="${esc(v)}">${esc(v)}</option>`));
+        stateSelect.value = currentState;
+        analystSelect.value = currentAnalyst;
+      }
     }
   }
 
