@@ -21,7 +21,6 @@ async function ensureStoreSchema(env){
   }
 }
 async function storesQuery(env){
-  await ensureStoreSchema(env);
   const r=await env.DB.prepare(`SELECT s.id,s.code AS number,s.name,s.document AS document,s.address,s.street,s.neighborhood,s.state,s.state_registration,s.municipal_registration,COALESCE(u.name,'') AS analyst FROM stores s LEFT JOIN portfolio_stores ps ON ps.store_id=s.id LEFT JOIN portfolios p ON p.id=ps.portfolio_id LEFT JOIN users u ON u.id=p.owner_user_id AND u.status='active' WHERE s.status='active' GROUP BY s.id ORDER BY s.name`).all();
   return r.results||[];
 }
