@@ -9,7 +9,6 @@
     '/api/team-status':30000,
     '/api/portfolios':30000,
     '/api/deadline-configs':30000,
-    '/api/apuracoes':5000,
     '/api/apuracoes-report':10000,
     '/api/curva-abc-report':10000,
     '/api/dashboard':10000
@@ -21,7 +20,6 @@
     '/api/team-status':120000,
     '/api/portfolios':120000,
     '/api/deadline-configs':120000,
-    '/api/apuracoes':15000,
     '/api/apuracoes-report':30000,
     '/api/curva-abc-report':30000,
     '/api/dashboard':30000
