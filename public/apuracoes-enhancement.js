@@ -1,8 +1,8 @@
 (function(){
 const TAXES=['ICMS','PIS/COFINS','ISS','SPED ICMS','Fronteiras'];
-const CHECK={quebra_sequencia:'1. Quebra de sequência',painel_inconsistencia:'2. Painel de inconsistência',notas_baixa_estoque:'3. Notas de baixa de estoque',curva_abc:'4. Curva ABC',ajustes_credito_debito:'5. Ajustes de crédito e débito',contabilizacao:'6. Contabilização'};
+const CHECK={quebra_sequencia:'1. Quebra de sequência',painel_inconsistencia:'2. Painel de inconsistência',notas_baixa_estoque:'3. Notas de baixa de estoque',curva_abc:'4. Curva ABC',ajustes_credito_debito:'5. Ajustes de crédito e débito',registro_resumo_icms:'6. Registro e Resumo do ICMS e outros documentos salvos na pasta (REDE)',contabilizacao:'7. Contabilização'};
 const CONTROL_PROFILES=['Gestão','Gerente','Coordenador','Desenvolvedor'];
-const esc=v=>String(v??'').replace(/[&<>\"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','\"':'&quot;',"'":'&#39;'}[c]));
+const esc=v=>String(v??'').replace(/[&<>\\\"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','\\"':'&quot;',"'":'&#39;'}[c]));
 const control=()=>CONTROL_PROFILES.includes(state.user?.profile);
 const secs=n=>{n=Math.floor(Number(n)||0);const h=Math.floor(n/3600),m=Math.floor(n%3600/60),s=n%60;return h?`${h}h ${m}m ${s}s`:`${String(m).padStart(2,'0')}m ${String(s).padStart(2,'0')}s`};
 const el=(a,b)=>a?Math.max(0,(new Date(b||Date.now())-new Date(a))/1000):0;
