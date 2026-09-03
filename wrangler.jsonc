@@ -1,7 +1,7 @@
 {
   "$schema": "./node_modules/wrangler/config-schema.json",
   "name": "fiscal-control-v2",
-  "main": "worker-router.js",
+  "main": "worker-main.js",
   "compatibility_date": "2026-09-01",
   "assets": {
     "directory": "./public",
