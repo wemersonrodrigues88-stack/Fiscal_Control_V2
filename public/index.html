@@ -6,6 +6,11 @@
 <title>Fiscal Control — Gestão Fiscal Mensal</title>
 <meta name="description" content="Fiscal Control — Gestão Fiscal Mensal">
 <link rel="stylesheet" href="/styles.css">
+<style>
+/* APURAÇÕES: somente a implementação canônica deve renderizar esta tela. */
+#content > .grid.three,
+#content > .section-title:has(+ .grid.three){display:none!important}
+</style>
 </head>
 <body>
 <div id="app"></div>
@@ -13,8 +18,7 @@
 <script src="/performance-enhancement.js?v=1" defer></script>
 <script src="/prazos-enhancement.js?v=6" defer></script>
 <script src="/carteiras-enhancement.js?v=9" defer></script>
-<script src="/apuracoes-flow-enhancement.js?v=6" defer></script>
-<script src="/apuracoes-enhancement.js?v=10" defer></script>
+<script src="/apuracoes-enhancement.js?v=11" defer></script>
 <script>
 (function(){
   const labels={feito:'Sem diferença',incons_comercial:'Diferença comercial',incons_contabil:'Diferença contábil'};
@@ -29,6 +33,5 @@
 <script src="/gestao-enhancement.js?v=3" defer></script>
 <script src="/gestao-vinculos.js?v=1" defer></script>
 <script src="/redefinir-senha-enhancement.js?v=1" defer></script>
-<script src="/title-deduplication.js?v=1" defer></script>
 </body>
 </html>
