@@ -20,21 +20,25 @@ async function ensureStoreSchema(env){
     try{await env.DB.prepare(`ALTER TABLE stores ADD COLUMN ${column} ${type}`).run()}catch{}
   }
 }
-async function storesQuery(env){
-  const r=await env.DB.prepare(`SELECT s.id,s.code AS number,s.name,s.document AS document,s.address,s.street,s.neighborhood,s.state,s.state_registration,s.municipal_registration,COALESCE(u.name,'') AS analyst FROM stores s LEFT JOIN portfolio_stores ps ON ps.store_id=s.id LEFT JOIN portfolios p ON p.id=ps.portfolio_id LEFT JOIN users u ON u.id=p.owner_user_id AND u.status='active' WHERE s.status='active' GROUP BY s.id ORDER BY s.name`).all();
+async function storesQuery(env,ownerUserId=null){
+  let sql=`SELECT s.id,s.code AS number,s.name,s.document AS document,s.address,s.street,s.neighborhood,s.state,s.state_registration,s.municipal_registration,COALESCE(u.name,'') AS analyst FROM stores s LEFT JOIN portfolio_stores ps ON ps.store_id=s.id LEFT JOIN portfolios p ON p.id=ps.portfolio_id LEFT JOIN users u ON u.id=p.owner_user_id AND u.status='active' WHERE s.status='active'`;
+  const params=[];
+  if(ownerUserId!==null){sql+=` AND EXISTS (SELECT 1 FROM portfolio_stores ps2 JOIN portfolios p2 ON p2.id=ps2.portfolio_id WHERE ps2.store_id=s.id AND p2.owner_user_id=?1)`;params.push(ownerUserId)}
+  sql+=` GROUP BY s.id ORDER BY s.name`;
+  const r=params.length?await env.DB.prepare(sql).bind(...params).all():await env.DB.prepare(sql).all();
   return r.results||[];
 }
 async function state(env,user){
   const period=new Date().toISOString().slice(0,7);
+  const ownerUserId=['Analista','Assistente'].includes(user.profile)?user.id:null;
   const [analysts,stores,execs,deadlines,history]=await Promise.all([
     env.DB.prepare(`SELECT u.id,u.name,tm.seniority AS level,'Ativo' AS status FROM users u JOIN profiles p ON p.id=u.profile_id LEFT JOIN team_members tm ON tm.user_id=u.id WHERE u.status='active' AND p.name='Analista' ORDER BY u.name`).all(),
-    storesQuery(env),
+    storesQuery(env,ownerUserId),
     env.DB.prepare(`SELECT o.id,o.store_id,o.name AS obligation,o.status,o.updated_at,o.responsible_user_id FROM obligations o WHERE o.competence_period=?1`).bind(period).all(),
     env.DB.prepare(`SELECT d.id,o.name AS obligation,d.due_date,d.status FROM deadlines d JOIN obligations o ON o.id=d.obligation_id WHERE o.competence_period=?1 ORDER BY d.due_date`).bind(period).all(),
     env.DB.prepare(`SELECT id,entity_type,entity_id,action,description,created_at FROM history ORDER BY created_at DESC LIMIT 100`).all()
   ]);
   let visibleStores=stores;
-  if(['Analista','Assistente'].includes(user.profile)) visibleStores=visibleStores.filter(s=>s.analyst===user.name);
   const visibleIds=new Set(visibleStores.map(s=>String(s.id)));
   const executions=(execs.results||[]).filter(x=>visibleIds.has(String(x.store_id)));
   return json({user,analysts:analysts.results||[],stores:visibleStores,executions,deadlines:deadlines.results||[],history:history.results||[],obligations:TAX});
@@ -55,7 +59,6 @@ async function updateExecution(request,env,user){
 }
 async function updateStore(request,env,user){
   if(!management(user)) return json({error:'Somente Gestão e Desenvolvedor podem editar os dados cadastrais das lojas.'},403);
-  await ensureStoreSchema(env);
   const url=new URL(request.url); const id=Number(url.pathname.split('/').pop()); if(!id) return json({error:'Loja inválida.'},400);
   const b=await request.json().catch(()=>null); if(!b) return json({error:'Dados inválidos.'},400);
   const name=String(b.name||'').trim(); const code=String(b.number||'').trim();
