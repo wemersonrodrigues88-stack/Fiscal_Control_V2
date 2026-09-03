@@ -5,11 +5,11 @@ const AP_SCHEMA = {
     store_id: 'INTEGER',
     obligation: 'TEXT',
     competence_period: 'TEXT',
-    status: "TEXT NOT NULL DEFAULT 'Pendente'",
+    status: 'TEXT',
     started_at: 'TEXT',
     analyzing_at: 'TEXT',
     finished_at: 'TEXT',
-    updated_at: 'TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP',
+    updated_at: 'TEXT',
     updated_by: 'INTEGER'
   },
   icms_checklist: {
@@ -17,7 +17,7 @@ const AP_SCHEMA = {
     competence_period: 'TEXT',
     item_key: 'TEXT',
     status: 'TEXT',
-    updated_at: 'TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP',
+    updated_at: 'TEXT',
     updated_by: 'INTEGER'
   }
 };
