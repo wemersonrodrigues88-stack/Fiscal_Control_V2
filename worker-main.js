@@ -1,4 +1,4 @@
-import baseWorker from './apuracoes-direct-worker.js';
+import baseWorker from './status-flow-worker-fixed.js';
 
 const PASSWORD_ITERATIONS=120000;
 const CHALLENGE_TTL_MS=120000;
