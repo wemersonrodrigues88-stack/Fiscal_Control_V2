@@ -6,7 +6,7 @@ const secs=n=>{n=Math.max(0,Math.floor(Number(n)||0));const h=Math.floor(n/3600)
 const elapsed=(a,b)=>a&&b?Math.max(0,(new Date(b||Date.now())-new Date(a))/1000):0;
 const originalFetch=window.fetch.bind(window);
 window.fetch=async function(input,init){const response=await originalFetch(input,init);try{const url=typeof input==='string'?input:(input?.url||'');if(new URL(url,location.href).pathname==='/api/apuracoes'&&response.ok){const data=await response.clone().json();(data.items||[]).forEach(x=>{if(x.flow_phase)phases.set(key(x.store_id,x.obligation),x)})}}catch{}return response};
-function removeDuplicateTitle(){const title=document.querySelector('#page-title');if(!title)return;const isApuracoes=title.textContent.trim()==='Apurações';title.style.display=isApuracoes?'none':'';}
+function removeDuplicateTitle(){const title=document.querySelector('#page-title');if(title&&title.textContent.trim()==='Apurações')title.style.removeProperty('display');}
 function tableTimer(td,cls,text,start){let tm=td.querySelector('.'+cls);if(!tm){tm=document.createElement('small');tm.className=cls;td.appendChild(tm)}tm.textContent=text;tm.dataset.t=start||'';return tm}
 function apply(){
  removeDuplicateTitle();
