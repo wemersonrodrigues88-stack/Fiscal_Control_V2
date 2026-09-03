@@ -3,7 +3,6 @@
   const cache=new Map();
   const TTL={
     '/api/state':5000,
-    '/api/apuracoes':5000,
     '/api/team':30000,
     '/api/team/options':30000,
     '/api/portfolios':30000
