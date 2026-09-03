@@ -7,25 +7,31 @@
 <meta name="description" content="Fiscal Control — Gestão Fiscal Mensal">
 <link rel="stylesheet" href="/styles.css">
 <style>
-/* A tela de Apurações usa exclusivamente a implementação atual. O layout legado .grid.three fica oculto desde o primeiro paint. */
 #content > .grid.three,
 #content > .section-title:has(+ .grid.three){display:none!important}
 </style>
 </head>
 <body>
 <div id="app"></div>
-<script src="/app.js?v=57" defer></script>
+<script src="/app.js?v=58" defer></script>
 <script src="/performance-enhancement.js?v=1" defer></script>
 <script src="/prazos-enhancement.js?v=6" defer></script>
-<script src="/carteiras-enhancement.js?v=8" defer></script>
+<script src="/carteiras-enhancement.js?v=9" defer></script>
 <script src="/apuracoes-flow-enhancement.js?v=5" defer></script>
 <script src="/apuracoes-enhancement.js?v=9" defer></script>
 <script>
 (function(){
   const labels={feito:'Sem diferença',incons_comercial:'Diferença comercial',incons_contabil:'Diferença contábil'};
-  const apply=()=>document.querySelectorAll('.check-options[data-item="curva_abc"] button[data-v]').forEach(b=>{const label=labels[b.dataset.v];if(label&&b.firstChild)b.firstChild.nodeValue=label+' ';});
-  new MutationObserver(apply).observe(document.documentElement,{childList:true,subtree:true});
-  apply();
+  const clean=()=>{
+    document.querySelectorAll('.check-options[data-item="curva_abc"] button[data-v]').forEach(b=>{const label=labels[b.dataset.v];if(label&&b.firstChild)b.firstChild.nodeValue=label+' ';});
+    if(document.querySelector('#page-title')?.textContent.trim()==='Equipe'){
+      const c=document.querySelector('#content');
+      c?.querySelectorAll('.section-title .muted').forEach(el=>{if(el.textContent.trim()==='Todos os colaboradores autorizados para o seu nível de acesso.')el.remove()});
+      c?.querySelectorAll('div,section,fieldset').forEach(el=>{const text=el.textContent.replace(/\s+/g,' ').trim();if(text.includes('Senioridade')&&text.includes('Coordenador')&&el.querySelectorAll('select').length>=2&&el.children.length<=4)el.remove()});
+    }
+  };
+  new MutationObserver(clean).observe(document.documentElement,{childList:true,subtree:true});
+  clean();
 })();
 </script>
 <script src="/dashboard-title-enhancement.js?v=1" defer></script>
