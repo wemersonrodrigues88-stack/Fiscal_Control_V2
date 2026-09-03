@@ -9,53 +9,48 @@ async function auth(req,env){const a=req.headers.get('Authorization')||'';if(!a.
 
 async function readAp(req,env,u){
   const period=new Date().toISOString().slice(0,7);
-  let rows=[];
-  try{
-    const r=await env.DB.prepare(`WITH taxes(obligation) AS (VALUES ('ICMS'),('PIS/COFINS'),('ISS'),('SPED ICMS'),('Fronteiras'))
-      SELECT s.id,s.code AS number,s.name,s.state,COALESCE(pu.name,'') AS analyst,
-             t.obligation,COALESCE(e.status,'Pendente') AS status,e.started_at,e.analyzing_at,e.finished_at,e.updated_at,
-             f.phase,f.query_generated_at,f.analyzing_at AS flow_analyzing_at,f.finalizing_at
-      FROM stores s
-      LEFT JOIN portfolio_stores ps ON ps.store_id=s.id
-      LEFT JOIN portfolios p ON p.id=ps.portfolio_id
-      LEFT JOIN users pu ON pu.id=p.owner_user_id AND pu.status='active'
-      CROSS JOIN taxes t
-      LEFT JOIN execution_control e ON e.store_id=s.id AND e.obligation=t.obligation AND e.competence_period=?1
-      LEFT JOIN apuracoes_flow f ON f.store_id=s.id AND f.obligation=t.obligation AND f.competence_period=?1
-      WHERE s.status='active'
-      ORDER BY CAST(s.code AS INTEGER),s.code,t.obligation`).bind(period).all();
-    rows=r.results||[];
-  }catch(error){
-    console.error('Apurações primary query:',error?.message||error);
-    try{
-      const r=await env.DB.prepare(`WITH taxes(obligation) AS (VALUES ('ICMS'),('PIS/COFINS'),('ISS'),('SPED ICMS'),('Fronteiras'))
-        SELECT s.id,s.code AS number,s.name,s.state,COALESCE(pu.name,'') AS analyst,
-               t.obligation,COALESCE(o.status,'Pendente') AS status,o.created_at AS started_at,NULL AS analyzing_at,NULL AS finished_at,o.updated_at
-        FROM stores s
-        LEFT JOIN portfolio_stores ps ON ps.store_id=s.id
-        LEFT JOIN portfolios p ON p.id=ps.portfolio_id
-        LEFT JOIN users pu ON pu.id=p.owner_user_id AND pu.status='active'
-        CROSS JOIN taxes t
-        LEFT JOIN obligations o ON o.store_id=s.id AND o.name=t.obligation AND o.id=(SELECT MAX(o2.id) FROM obligations o2 WHERE o2.store_id=s.id AND o2.name=t.obligation)
-        WHERE s.status='active'
-        ORDER BY CAST(s.code AS INTEGER),s.code,t.obligation`).all();
-      rows=r.results||[];
-    }catch(fallbackError){
-      console.error('Apurações fallback query:',fallbackError?.message||fallbackError);
-      throw fallbackError;
-    }
+  let stores=[];
+  if(GLOBAL_PROFILES.includes(u.profile)){
+    const r=await env.DB.prepare(`SELECT s.id,s.code AS number,s.name,s.state,COALESCE(pu.name,'') AS analyst FROM stores s LEFT JOIN portfolio_stores ps ON ps.store_id=s.id LEFT JOIN portfolios p ON p.id=ps.portfolio_id LEFT JOIN users pu ON pu.id=p.owner_user_id AND pu.status='active' WHERE s.status='active' GROUP BY s.id ORDER BY s.code`).all();
+    stores=r.results||[];
+  }else if(['Analista','Assistente'].includes(u.profile)){
+    const r=await env.DB.prepare(`SELECT s.id,s.code AS number,s.name,s.state,COALESCE(pu.name,'') AS analyst FROM stores s JOIN portfolio_stores ps ON ps.store_id=s.id JOIN portfolios p ON p.id=ps.portfolio_id LEFT JOIN users pu ON pu.id=p.owner_user_id AND pu.status='active' WHERE s.status='active' AND p.owner_user_id=?1 GROUP BY s.id ORDER BY s.code`).bind(u.id).all();
+    stores=r.results||[];
   }
 
-  let visible=rows;
-  if(!GLOBAL_PROFILES.includes(u.profile))visible=rows.filter(x=>['Analista','Assistente'].includes(u.profile)&&x.analyst===u.name);
-  const stores=[];const seen=new Set();const items=[];
-  for(const x of visible){
-    if(!seen.has(String(x.id))){seen.add(String(x.id));stores.push({id:x.id,number:x.number,name:x.name,state:x.state,analyst:x.analyst||''})}
-    let status=x.status||'Pendente';
-    if(x.phase==='Query'||x.phase==='Analisando')status='Analisando';
-    else if(x.phase==='Finalizando')status='Finalizado';
-    else if(x.phase==='Gerando')status='Gerando';
-    items.push({id:x.id,store_id:x.id,number:x.number,name:x.name,state:x.state,analyst:x.analyst||'',obligation:x.obligation,status,started_at:x.started_at||null,analyzing_at:x.analyzing_at||null,finished_at:x.finished_at||null,updated_at:x.updated_at||null,flow_phase:x.phase||null,query_generated_at:x.query_generated_at||null,flow_analyzing_at:x.flow_analyzing_at||null,finalizing_at:x.finalizing_at||null});
+  if(!stores.length)return json({stores:[],items:[],checklist:[]});
+
+  const ids=stores.map(s=>s.id);
+  const q=ids.map(()=>'?').join(',');
+  let executions=[];
+  try{
+    const r=await env.DB.prepare(`SELECT store_id,obligation,status,started_at,analyzing_at,finished_at,updated_at FROM execution_control WHERE competence_period=?1 AND store_id IN (${q})`).bind(period,...ids).all();
+    executions=r.results||[];
+  }catch(error){
+    console.error('Apurações execution_control read:',error?.message||error);
+  }
+
+  let flows=[];
+  try{
+    const r=await env.DB.prepare(`SELECT store_id,obligation,phase,query_generated_at,analyzing_at AS flow_analyzing_at,finalizing_at FROM apuracoes_flow WHERE competence_period=?1 AND store_id IN (${q})`).bind(period,...ids).all();
+    flows=r.results||[];
+  }catch(error){
+    console.error('Apurações flow read:',error?.message||error);
+  }
+
+  const em=new Map(executions.map(x=>[`${x.store_id}|${x.obligation}`,x]));
+  const fm=new Map(flows.map(x=>[`${x.store_id}|${x.obligation}`,x]));
+  const items=[];
+  for(const s of stores){
+    for(const obligation of TAXES){
+      const e=em.get(`${s.id}|${obligation}`)||{};
+      const f=fm.get(`${s.id}|${obligation}`)||{};
+      let status=e.status||'Pendente';
+      if(f.phase==='Query'||f.phase==='Analisando')status='Analisando';
+      else if(f.phase==='Finalizando')status='Finalizado';
+      else if(f.phase==='Gerando')status='Gerando';
+      items.push({id:s.id,store_id:s.id,number:s.number,name:s.name,state:s.state,analyst:s.analyst||'',obligation,status,started_at:e.started_at||null,analyzing_at:e.analyzing_at||null,finished_at:e.finished_at||null,updated_at:e.updated_at||null,flow_phase:f.phase||null,query_generated_at:f.query_generated_at||null,flow_analyzing_at:f.flow_analyzing_at||null,finalizing_at:f.finalizing_at||null});
+    }
   }
   return json({stores,items,checklist:[]});
 }
