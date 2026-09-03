@@ -25,11 +25,12 @@ async function storesQuery(env){
   return r.results||[];
 }
 async function state(env,user){
+  const period=new Date().toISOString().slice(0,7);
   const [analysts,stores,execs,deadlines,history]=await Promise.all([
     env.DB.prepare(`SELECT u.id,u.name,tm.seniority AS level,'Ativo' AS status FROM users u JOIN profiles p ON p.id=u.profile_id LEFT JOIN team_members tm ON tm.user_id=u.id WHERE u.status='active' AND p.name='Analista' ORDER BY u.name`).all(),
     storesQuery(env),
-    env.DB.prepare(`SELECT o.id,o.store_id,o.name AS obligation,o.status,o.updated_at,o.responsible_user_id FROM obligations o WHERE o.id IN (SELECT MAX(id) FROM obligations GROUP BY store_id,name)`).all(),
-    env.DB.prepare(`SELECT d.id,o.name AS obligation,d.due_date,d.status FROM deadlines d JOIN obligations o ON o.id=d.obligation_id ORDER BY d.due_date`).all(),
+    env.DB.prepare(`SELECT o.id,o.store_id,o.name AS obligation,o.status,o.updated_at,o.responsible_user_id FROM obligations o WHERE o.competence_period=?1`).bind(period).all(),
+    env.DB.prepare(`SELECT d.id,o.name AS obligation,d.due_date,d.status FROM deadlines d JOIN obligations o ON o.id=d.obligation_id WHERE o.competence_period=?1 ORDER BY d.due_date`).bind(period).all(),
     env.DB.prepare(`SELECT id,entity_type,entity_id,action,description,created_at FROM history ORDER BY created_at DESC LIMIT 100`).all()
   ]);
   let visibleStores=stores;
