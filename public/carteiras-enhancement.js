@@ -1,12 +1,31 @@
 (()=>{
-const ID='carteiras-tools';
-const esc=v=>String(v??'').replace(/[&<>\"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','\"':'&quot;',"'":'&#39;'}[c]));
 const isPage=()=>document.querySelector('#page-title')?.textContent.trim()==='Carteiras';
-function install(){if(document.getElementById('carteiras-final-style'))return;const s=document.createElement('style');s.id='carteiras-final-style';s.textContent=`#${ID}{display:flex;gap:10px;align-items:end;flex-wrap:wrap;margin:0 0 16px}#${ID} .filter-field{display:flex;flex-direction:column;gap:6px;min-width:180px}#${ID} label{font-size:12px;font-weight:700;color:#536176}#${ID} select,#${ID} button{height:38px;border:1px solid #d9e0ea;border-radius:9px;background:#fff;padding:0 12px;font:inherit;color:#17243a}#${ID} button{cursor:pointer;font-weight:700}.carteiras-print-page{display:none}@media print{ @page{size:A4 portrait;margin:5mm} body.print-carteiras{margin:0!important;background:#fff!important} body.print-carteiras .sidebar,body.print-carteiras .topbar,body.print-carteiras #${ID},body.print-carteiras .section-title,body.print-carteiras .user-chip{display:none!important} body.print-carteiras .main{margin:0!important;padding:0!important;width:100%!important} body.print-carteiras #content{padding:0!important;margin:0!important} body.print-carteiras .table-wrap{overflow:visible!important;width:100%!important} body.print-carteiras table{width:100%!important;border-collapse:collapse!important;table-layout:fixed!important;font-size:6.2pt!important;line-height:1.05!important} body.print-carteiras th,body.print-carteiras td{padding:2.2pt 2pt!important;border:1px solid #cbd5e1!important;white-space:nowrap!important;overflow:hidden!important;text-overflow:clip!important} body.print-carteiras th{font-size:6.3pt!important} body.print-carteiras .table-wrap table th:nth-child(1),body.print-carteiras .table-wrap table td:nth-child(1){width:7%}body.print-carteiras .table-wrap table th:nth-child(2),body.print-carteiras .table-wrap table td:nth-child(2){width:14%}body.print-carteiras .table-wrap table th:nth-child(3),body.print-carteiras .table-wrap table td:nth-child(3){width:6%}body.print-carteiras .table-wrap table th:nth-child(4),body.print-carteiras .table-wrap table td:nth-child(4){width:15%}body.print-carteiras .table-wrap table th:nth-child(5),body.print-carteiras .table-wrap table td:nth-child(5){width:12%}body.print-carteiras .table-wrap table th:nth-child(6),body.print-carteiras .table-wrap table td:nth-child(6){width:23%}body.print-carteiras .table-wrap table th:nth-child(7),body.print-carteiras .table-wrap table td:nth-child(7){width:23%}}
-`;document.head.appendChild(s)}
-function tableInfo(){const t=document.querySelector('#content table');if(!t)return null;const h=[...t.querySelectorAll('thead th')].map(x=>x.textContent.trim().toLowerCase());return{t,state:h.indexOf('estado'),analyst:h.indexOf('analista')}}
-function rows(){return[...document.querySelectorAll('#content table tbody tr')]}
-function cell(r,i){return i<0?'':r.children[i]?.textContent.trim()||''}
-function setup(){if(!isPage())return;const c=document.querySelector('#content'),info=tableInfo();if(!c||!info)return;install();let bar=document.getElementById(ID);if(!bar){bar=document.createElement('div');bar.id=ID;bar.innerHTML=`<div class="filter-field"><label>Estado</label><select id="car-state"><option value="">Todos os estados</option></select></div><div class="filter-field"><label>Analista</label><select id="car-analyst"><option value="">Todos os analistas</option></select></div><button type="button" id="car-clear">Limpar filtros</button><button type="button" id="car-print">Imprimir</button>`;c.insertBefore(bar,info.t.parentElement);const apply=()=>{const sv=bar.querySelector('#car-state').value,av=bar.querySelector('#car-analyst').value;rows().forEach(r=>r.style.display=(!sv||cell(r,info.state)===sv)&&(!av||cell(r,info.analyst)===av)?'':'none')};const fill=()=>{const states=[...new Set(rows().map(r=>cell(r,info.state)).filter(x=>x&&x!=='—'))].sort((a,b)=>a.localeCompare(b,'pt-BR'));const analysts=[...new Set(rows().map(r=>cell(r,info.analyst)).filter(x=>x&&x!=='—'))].sort((a,b)=>a.localeCompare(b,'pt-BR'));bar.querySelector('#car-state').innerHTML='<option value="">Todos os estados</option>'+states.map(x=>`<option value="${esc(x)}">${esc(x)}</option>`).join('');bar.querySelector('#car-analyst').innerHTML='<option value="">Todos os analistas</option>'+analysts.map(x=>`<option value="${esc(x)}">${esc(x)}</option>`).join('');apply()};bar.querySelector('#car-state').onchange=apply;bar.querySelector('#car-analyst').onchange=apply;bar.querySelector('#car-clear').onclick=()=>{bar.querySelector('#car-state').value='';bar.querySelector('#car-analyst').value='';apply()};const print=()=>{document.body.classList.add('print-carteiras');window.print();setTimeout(()=>document.body.classList.remove('print-carteiras'),700)};bar.querySelector('#car-print').onclick=print;fill()}else{const e=bar.querySelector('#car-state');if(e&&e.options.length<=1){const states=[...new Set(rows().map(r=>cell(r,info.state)).filter(x=>x&&x!=='—'))].sort((a,b)=>a.localeCompare(b,'pt-BR'));e.innerHTML='<option value="">Todos os estados</option>'+states.map(x=>`<option value="${esc(x)}">${esc(x)}</option>`).join('')}}}
-let timer;new MutationObserver(()=>{clearTimeout(timer);timer=setTimeout(setup,100)}).observe(document.documentElement,{childList:true,subtree:true});setTimeout(setup,250);document.addEventListener('click',e=>{if(e.target.closest('[data-page="carteiras"]'))setTimeout(setup,150)});
+function install(){
+  if(document.getElementById('carteiras-final-style'))return;
+  const s=document.createElement('style');
+  s.id='carteiras-final-style';
+  s.textContent=`.carteiras-print-page{display:none}@media print{ @page{size:A4 portrait;margin:5mm} body.print-carteiras{margin:0!important;background:#fff!important} body.print-carteiras .sidebar,body.print-carteiras .topbar,body.print-carteiras .section-title,body.print-carteiras .user-chip{display:none!important} body.print-carteiras .main{margin:0!important;padding:0!important;width:100%!important} body.print-carteiras #content{padding:0!important;margin:0!important} body.print-carteiras .table-wrap{overflow:visible!important;width:100%!important} body.print-carteiras table{width:100%!important;border-collapse:collapse!important;table-layout:fixed!important;font-size:6.2pt!important;line-height:1.05!important} body.print-carteiras th,body.print-carteiras td{padding:2.2pt 2pt!important;border:1px solid #cbd5e1!important;white-space:nowrap!important;overflow:hidden!important;text-overflow:clip!important} body.print-carteiras th{font-size:6.3pt!important}}`;
+  document.head.appendChild(s);
+}
+function setup(){
+  if(!isPage())return;
+  const c=document.querySelector('#content');
+  if(!c)return;
+  install();
+  const subtitle=[...c.querySelectorAll('.section-title .muted')].find(x=>x.textContent.trim()==='Cadastro completo das lojas e vínculo com o analista.');
+  subtitle?.remove();
+  if(c.querySelector('#carteiras-print'))return;
+  const header=c.querySelector('.section-title');
+  if(!header)return;
+  const b=document.createElement('button');
+  b.id='carteiras-print';
+  b.className='secondary';
+  b.textContent='Imprimir';
+  b.type='button';
+  b.onclick=()=>{document.body.classList.add('print-carteiras');window.print();setTimeout(()=>document.body.classList.remove('print-carteiras'),700)};
+  header.appendChild(b);
+}
+let timer;new MutationObserver(()=>{clearTimeout(timer);timer=setTimeout(setup,100)}).observe(document.documentElement,{childList:true,subtree:true});
+setTimeout(setup,250);
+document.addEventListener('click',e=>{if(e.target.closest('[data-page="carteiras"]'))setTimeout(setup,150)});
 })();
