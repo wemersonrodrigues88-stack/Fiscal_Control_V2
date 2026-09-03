@@ -13,8 +13,7 @@
     {
       "binding": "DB",
       "database_name": "fiscal-control-v2-db",
-      "database_id": "687d8707-248a-4ad9-82ca-07af67b82d76",
-      "migrations_dir": "database/migrations"
+      "database_id": "687d8707-248a-4ad9-82ca-07af67b82d76"
     }
   ],
   "vars": {
