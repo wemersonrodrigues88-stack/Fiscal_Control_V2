@@ -1,7 +1,7 @@
 {
   "$schema": "./node_modules/wrangler/config-schema.json",
   "name": "fiscal-control-v2",
-  "main": "status-flow-worker.js",
+  "main": "worker-main.js",
   "compatibility_date": "2026-09-01",
   "assets": {
     "directory": "./public",
@@ -13,11 +13,18 @@
     {
       "binding": "DB",
       "database_name": "fiscal-control-v2-db",
-      "database_id": "687d8707-248a-4ad9-82ca-07af67b82d76"
+      "database_id": "687d8707-248a-4ad9-82ca-07af67b82d76",
+      "migrations_dir": "database/migrations"
     }
   ],
   "vars": {
     "APP_NAME": "Fiscal Control",
     "APP_VERSION": "2.0.0"
+  },
+  "observability": {
+    "enabled": true,
+    "logs": {
+      "head_sampling_rate": 1
+    }
   }
 }
