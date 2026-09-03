@@ -5,7 +5,17 @@ const esc=v=>String(v??'').replace(/[&<>\"']/g,c=>({'&':'&amp;','<':'&lt;','>':'
 const moneyDate=v=>{if(!v)return '—';const d=new Date(v);return isNaN(d)?String(v):d.toLocaleDateString('pt-BR')};
 const icon={ICMS:'▣','PIS/COFINS':'▤','ISS':'▤','SPED ICMS':'▤',Fronteiras:'◎'};
 function go(page){document.querySelector(`[data-page="${page}"]`)?.click()}
-async function getAp(){try{return await api('/api/apuracoes')}catch{return {stores:[],items:[]}}}
+function stateApFallback(){
+ const s=(typeof state!=='undefined'&&state.data)||{};
+ const stores=s.stores||[], executions=s.executions||[];
+ const items=[];
+ for(const store of stores)for(const tax of TAX){
+  const found=executions.find(x=>String(x.store_id)===String(store.id)&&x.obligation===tax);
+  items.push({...store,store_id:store.id,obligation:tax,status:found?.status||'Pendente',started_at:found?.started_at||null,analyzing_at:found?.analyzing_at||null,finished_at:found?.finished_at||null});
+ }
+ return {stores,items,checklist:[]};
+}
+async function getAp(){try{return await api('/api/apuracoes')}catch(error){console.warn('Dashboard: /api/apuracoes indisponível; preservando /api/state.',error);return stateApFallback()}}
 function monthLabel(){return new Intl.DateTimeFormat('pt-BR',{month:'long',year:'numeric'}).format(new Date()).replace(/^./,x=>x.toUpperCase())}
 function deadlineStatus(x){const s=String(x.status||'').trim().toLowerCase();if(s.includes('atras')||s.includes('venc'))return ['Atenção','red'];if(s.includes('andamento'))return ['Em andamento','blue'];if(s.includes('próx')||s.includes('proximo'))return ['Próximo','yellow'];return ['Em dia','green']}
 function render(d){
