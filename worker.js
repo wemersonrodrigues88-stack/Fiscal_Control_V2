@@ -100,9 +100,8 @@ async function createStore(request,env,user){
     const ins=await env.DB.prepare(`INSERT INTO stores(code,name,document,address,street,address_number,complement,neighborhood,city,state,state_registration,municipal_registration,iss_due_day,status,created_at,updated_at) VALUES(?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12,?13,'active',?14,?14)`).bind(code,name,String(b.document||''),String(b.address||''),String(b.street||''),String(b.address_number||''),String(b.complement||''),String(b.neighborhood||''),String(b.city||''),String(b.state||''),String(b.state_registration||''),String(b.municipal_registration||''),due,now).run();
     const id=ins.meta?.last_row_id;if(!id)throw new Error('Falha ao obter o ID da loja.');
     if(analyst)await portfolioForStore(env,id,code,name,analyst.id);
-    await audit(env,user,request,'create_store','store',id);
-    try{await env.DB.prepare(`INSERT INTO history(user_id,entity_type,entity_id,action,description) VALUES(?1,'store',?2,'CREATE',?3)`).bind(user.id,id,JSON.stringify({name,code})).run()}catch{}
-    const result=await storesQuery(env).then(rows=>rows.find(x=>Number(x.id)===Number(id))||null);
+    await Promise.all([audit(env,user,request,'create_store','store',id),env.DB.prepare(`INSERT INTO history(user_id,entity_type,entity_id,action,description) VALUES(?1,'store',?2,'CREATE',?3)`).bind(user.id,id,JSON.stringify({name,code})).run().catch(()=>{})]);
+    const result=await env.DB.prepare(`SELECT s.id,s.code AS number,s.name,s.document,s.address,s.street,s.address_number,s.complement,s.neighborhood,s.city,s.state,s.state_registration,s.municipal_registration,s.iss_due_day,COALESCE(u.name,'') AS analyst FROM stores s LEFT JOIN portfolio_stores ps ON ps.store_id=s.id LEFT JOIN portfolios p ON p.id=ps.portfolio_id LEFT JOIN users u ON u.id=p.owner_user_id AND u.status='active' WHERE s.id=?1 GROUP BY s.id`).bind(id).first();
     return json({ok:true,data:result},201);
   }catch(error){console.error('Store create error:',error);return json({error:error?.message?.includes('UNIQUE')?'Já existe uma loja com esse número.':'Não foi possível cadastrar a loja.'},500)}
 }
@@ -127,9 +126,8 @@ async function updateStore(request,env,user){
         if(analyst)for(const link of links.results)await env.DB.prepare('INSERT OR IGNORE INTO analyst_portfolios(analyst_user_id,portfolio_id) VALUES(?1,?2)').bind(analyst.id,link.portfolio_id).run();
       }else if(analyst)await portfolioForStore(env,id,code,name,analyst.id);
     }
-    await audit(env,user,request,'update_store','store',id);
-    try{await env.DB.prepare(`INSERT INTO history(user_id,entity_type,entity_id,action,description) VALUES(?1,'store',?2,'UPDATE',?3)`).bind(user.id,id,JSON.stringify({name,code})).run()}catch{}
-    const result=await storesQuery(env).then(rows=>rows.find(x=>Number(x.id)===Number(id))||null);
+    await Promise.all([audit(env,user,request,'update_store','store',id),env.DB.prepare(`INSERT INTO history(user_id,entity_type,entity_id,action,description) VALUES(?1,'store',?2,'UPDATE',?3)`).bind(user.id,id,JSON.stringify({name,code})).run().catch(()=>{})]);
+    const result=await env.DB.prepare(`SELECT s.id,s.code AS number,s.name,s.document,s.address,s.street,s.address_number,s.complement,s.neighborhood,s.city,s.state,s.state_registration,s.municipal_registration,s.iss_due_day,COALESCE(u.name,'') AS analyst FROM stores s LEFT JOIN portfolio_stores ps ON ps.store_id=s.id LEFT JOIN portfolios p ON p.id=ps.portfolio_id LEFT JOIN users u ON u.id=p.owner_user_id AND u.status='active' WHERE s.id=?1 GROUP BY s.id`).bind(id).first();
     return json({ok:true,data:result});
   }catch(error){console.error('Store update error:',error);return json({error:error?.message?.includes('UNIQUE')?'Já existe uma loja com esse número.':'Não foi possível salvar os dados da loja.'},500)}
 }
