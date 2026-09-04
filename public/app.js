@@ -107,7 +107,7 @@ async function check(c,id){
   const s=(state.data?.stores||[]).find(x=>Number(x.id)===id);
   const renderChecklist=(rows=[])=>{
     const map=new Map(rows.filter(x=>Number(x.store_id)===id).map(x=>[x.item_key,x.status]));
-    const opt=k=>k==='quebra_sequencia'?'<button data-v="feito">Sem diferença 💚</button><button data-v="ha_quebras">Há diferença 🟡</button>':k==='curva_abc'?'<button data-v="feito">Sem Diferença</button><button data-v="incons_comercial">Diferença Comercial</button><button data-v="incons_contabil">Diferença Contábil</button>':'<button data-v="feito">Feito 💚</button>';
+    const opt=k=>k==='quebra_sequencia'?'<button data-v="feito">Sem diferença 💚</button><button data-v="ha_quebras">Há diferença 🟡</button>':k==='curva_abc'?'<button data-v="feito">Sem quebra</button><button data-v="ha_quebras">Há quebra</button>':'<button data-v="feito">Feito 💚</button>';
     c.innerHTML=`<div class="card checklist"><div class="section-title"><div><h2>Checklist ICMS</h2><p class="muted">${esc(s?.number||'')} · ${esc(s?.name||'')}</p></div><button id="back-ap">Voltar</button></div>${Object.entries(CHECK).map(([k,l])=>`<div class="check-row"><div><b>${l}</b><small>${map.get(k)?'Concluído':'Pendente'}</small></div><div class="check-options" data-item="${k}">${opt(k)}</div></div>`).join('')}</div>`;
     c.querySelectorAll('.check-options button').forEach(b=>b.onclick=async()=>{
       const w=b.parentElement;
