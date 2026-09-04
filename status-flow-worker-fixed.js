@@ -39,7 +39,25 @@ async function rollbackAp(req,env,u){
   return json({ok:true,status:target});
 }
 async function getAp(req,env,u){try{return json(await safeApData(env,u))}catch(error){return errorJson(error,'GET /api/apuracoes direct D1')}}
+async function apuracoesReport(req,env,u){
+  const p=new Date().toISOString().slice(0,7),stores=await visibleStores(env,u);
+  const ids=stores.map(s=>s.id); if(!ids.length)return json({data:{competence_period:p,generated_at:new Date().toISOString(),summary:[],finalized:[],all:[]},ok:true});
+  const ec=await env.DB.prepare('SELECT ec.store_id,ec.obligation,ec.status,ec.started_at,ec.analyzing_at,ec.finished_at FROM execution_control ec WHERE ec.competence_period=?1').bind(p).all();
+  const by=new Map((ec.results||[]).map(x=>[x.store_id+'|'+x.obligation,x]));
+  const all=[]; for(const s of stores) for(const tax of TAXES){const x=by.get(s.id+'|'+tax)||{};all.push({...s,obligation:tax,status:x.status||'Pendente',started_at:x.started_at||null,analyzing_at:x.analyzing_at||null,finished_at:x.finished_at||null});}
+  const finalized=all.filter(x=>x.status==='Finalizado');
+  const summary=TAXES.map(t=>{const a=all.filter(x=>x.obligation===t);return {obligation:t,finalized:a.filter(x=>x.status==='Finalizado').length,pending:a.filter(x=>x.status!=='Finalizado').length,total_stores:a.length}});
+  return json({data:{competence_period:p,generated_at:new Date().toISOString(),summary,finalized,all},ok:true});
+}
+async function curvaAbcReport(req,env,u){
+  const p=new Date().toISOString().slice(0,7),stores=await visibleStores(env,u);
+  const r=await env.DB.prepare('SELECT store_id,status FROM icms_checklist WHERE competence_period=?1 AND item_key=?2').bind(p,'curva_abc').all();
+  const m=new Map((r.results||[]).map(x=>[x.store_id,x.status]));
+  return json({data:stores.map(s=>({...s,curva_abc:m.get(s.id)||'Pendente'})),ok:true});
+}
 export default {async fetch(request,env,ctx){const url=new URL(request.url);try{
+if(url.pathname==='/api/apuracoes-report'&&request.method==='GET'){const u=await auth(request,env);if(!u)return json({error:'Não autenticado.'},401);try{return await apuracoesReport(request,env,u)}catch(error){return errorJson(error,'GET /api/apuracoes-report')}}
+if(url.pathname==='/api/curva-abc-report'&&request.method==='GET'){const u=await auth(request,env);if(!u)return json({error:'Não autenticado.'},401);try{return await curvaAbcReport(request,env,u)}catch(error){return errorJson(error,'GET /api/curva-abc-report')}}
 if(url.pathname==='/api/apuracoes/status'&&request.method==='PUT'){const u=await auth(request,env);if(!u)return json({error:'Não autenticado.'},401);try{return await customStatus(request,env,u)}catch(error){return errorJson(error,'PUT /api/apuracoes/status')}}
 if(url.pathname==='/api/apuracoes/rollback'&&request.method==='PUT'){const u=await controlUser(request,env);if(!u)return json({error:'Não autorizado.'},403);try{return await rollbackAp(request,env,u)}catch(error){return errorJson(error,'PUT /api/apuracoes/rollback')}}
 if(url.pathname==='/api/apuracoes'&&request.method==='GET'){const u=await auth(request,env);if(!u)return json({error:'Não autenticado.'},401);return getAp(request,env,u)}
