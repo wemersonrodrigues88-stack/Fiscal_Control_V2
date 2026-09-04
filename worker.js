@@ -84,7 +84,7 @@ async function state(env,user){
   await ensureDeadlineSchema(env);
   const period=new Date().toISOString().slice(0,7);
   const ownerUserId=['Analista','Assistente'].includes(user.profile)?user.id:null;
-  const [analysts,stores,execs,deadlines,history,taxDeadlinesData,issDeadlinesData]=await Promise.all([
+  const [analysts,stores,execs,deadlines,taxDeadlinesData,issDeadlinesData,history]=await Promise.all([
     env.DB.prepare(`SELECT u.id,u.name,tm.seniority AS level,'Ativo' AS status FROM users u JOIN profiles p ON p.id=u.profile_id LEFT JOIN team_members tm ON tm.user_id=u.id WHERE u.status='active' AND p.name='Analista' ORDER BY u.name`).all(),
     storesQuery(env,ownerUserId),
     env.DB.prepare(`SELECT o.id,o.store_id,o.name AS obligation,o.status,o.updated_at,o.responsible_user_id FROM obligations o WHERE o.competence_period=?1`).bind(period).all(),
