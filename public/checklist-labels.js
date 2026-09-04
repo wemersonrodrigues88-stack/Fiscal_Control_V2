@@ -1,11 +1,11 @@
 // Checklist ICMS — rótulos oficiais.
-// Não remover nem renumerar itens: o checklist possui 8 itens.
+// O checklist possui 8 itens e os rótulos devem permanecer sincronizados com o fluxo.
 (function(){
   const apply=()=>{
     document.querySelectorAll('.check-row b').forEach(el=>{
       const t=el.textContent.trim();
-      if(t==='7. Contabilização') el.textContent='7. Controle Fechado';
-      if(t==='8. Controle Fechado') el.textContent='8. Contabilização';
+      if(/^7\./.test(t)) el.textContent='7. Controle Fechado';
+      if(/^8\./.test(t)) el.textContent='8. Contabilização';
     });
   };
   if(document.readyState==='loading') document.addEventListener('DOMContentLoaded',apply,{once:true});
