@@ -106,9 +106,12 @@ async function openStoreEditor(c,store){
 }
 async function prazos(c){
   const canEdit=['Gestão','Desenvolvedor','Coordenador'].includes(state.user.profile);
+  const restricted=['Analista','Assistente'].includes(state.user.profile);
   const configs=state.data?.tax_deadlines||[];
   const iss=state.data?.iss_deadlines||[];
-  const states=['PE','AL','PB','CE'];
+  const allStates=['PE','AL','PB','SP'];
+  const visibleStates=restricted?[...new Set(assigned(state.user.name).map(s=>String(s.state||'').trim().toUpperCase()).filter(Boolean))]:allStates;
+  const states=visibleStates.length?visibleStates:[];
   const taxes=['ICMS','PIS/COFINS','SPED ICMS','Fronteiras'];
   const by=(uf,tax)=>configs.find(x=>x.state===uf&&x.tax_name===tax)?.due_day??'';
   const card=uf=>'<article class="card"><div class="title"><h3>'+uf+'</h3><span class="badge blue">Prazos fiscais</span></div><div class="form-grid">'+taxes.map(t=>'<div class="field"><label>'+t+'</label><div style="display:flex;gap:8px"><input class="deadline-input" data-state="'+uf+'" data-tax="'+t+'" type="number" min="1" max="31" value="'+esc(by(uf,t))+'" '+(canEdit?'':'disabled')+' placeholder="Dia"></div></div>').join('')+'<div class="field"><label>ISS</label><button type="button" class="secondary iss-open" data-state="'+uf+'">Ver cidades e vencimentos</button></div></div></article>';
