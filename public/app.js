@@ -107,7 +107,7 @@ async function openDebtorDecision(c,id,name){
   m.innerHTML='<div style="background:#fff;border-radius:14px;padding:22px;max-width:460px;width:100%;box-shadow:0 18px 50px rgba(15,23,42,.2)"><h3 style="margin:0 0 6px">Loja devedora — ICMS</h3><p style="color:#667085;font-size:13px;margin:0 0 18px">'+esc(name||'')+'</p><p style="font-size:13px;color:#344054;margin:0 0 16px">Escolha o encaminhamento desta solicitação:</p><div style="display:flex;flex-direction:column;gap:9px"><button id="icms-approve" class="primary">Transferência aprovada</button><button id="icms-debtor-final" class="secondary">Finalizar como devedora</button><button id="icms-cancel" style="margin-top:4px">Cancelar</button></div></div>';
   document.body.appendChild(m);m.onclick=e=>{if(e.target===m)m.remove()};m.querySelector('#icms-cancel').onclick=()=>m.remove();
   const decide=async action=>{const b=m.querySelector(action==='approve'?'#icms-approve':'#icms-debtor-final');b.disabled=true;try{await api('/api/icms-debtor',{method:'PUT',body:JSON.stringify({store_id:id,action})});m.remove();render(c,await load())}catch(e){alert(e.message);b.disabled=false}};
-  m.querySelector('#icms-approve').onclick=()=>decide('approve');m.querySelector('#icms-debtor-final').onclick=()=>decide('finalize_debtor');
+  m.querySelector('#icms-approve').onclick=()=>decide('approve');m.querySelector('#icms-debtor-final').onclick=()=>decide('finalize_debtor');const bad=document.createElement('button');bad.id='icms-debtor-invalid';bad.className='secondary';bad.textContent='Solicitação indevida';m.querySelector('#icms-debtor-final').after(bad);bad.onclick=()=>decide('invalid_request');
 }
 const debtorNote=(s,d)=>{
   const x=d.items.find(i=>i.store_id===s.id&&i.obligation==='ICMS');
