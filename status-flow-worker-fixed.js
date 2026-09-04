@@ -34,10 +34,6 @@ async function customStatus(req,env,u){
    return json({ok:true,phase:'Query'});
  }
  if(requested==='Analisando'&&phase==='Query'){
-   if(tax==='ICMS'){
-     const n=await env.DB.prepare("SELECT COUNT(*) n FROM icms_checklist WHERE store_id=?1 AND competence_period=?2 AND status IS NOT NULL").bind(storeId,p).first();
-     if(Number(n?.n||0)<8)return json({error:'Conclua o checklist do ICMS antes de iniciar a análise.'},409);
-   }
    await env.DB.prepare("UPDATE execution_control SET status='Analisando',analyzing_at=?1,updated_at=?1,updated_by=?2 WHERE store_id=?3 AND obligation=?4 AND competence_period=?5").bind(t,u.id,storeId,tax,p).run();
    await env.DB.prepare("UPDATE apuracoes_flow SET phase='Analisando',analyzing_at=?1,updated_at=?1,updated_by=?2 WHERE store_id=?3 AND obligation=?4 AND competence_period=?5").bind(t,u.id,storeId,tax,p).run();
    return json({ok:true,phase:'Analisando'});
