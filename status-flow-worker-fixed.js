@@ -19,7 +19,7 @@ async function customStatus(req,env,u){const b=await req.json().catch(()=>null),
 async function icmsDebtor(req,env){
   const u=await auth(req,env);if(!u)return json({error:'Não autenticado.'},401);
   const b=await req.json().catch(()=>null),storeId=Number(b?.store_id),action=String(b?.action||'');
-  if(!storeId||!['request','approve','finalize_debtor'].includes(action))return json({error:'Dados inválidos.'},400);
+  if(!storeId||!['request','approve','finalize_debtor','invalid_request'].includes(action))return json({error:'Dados inválidos.'},400);
   const p=currentPeriod();await ensure(env);
   if(!(await visibleStore(env,u,storeId)))return json({error:'Loja não disponível para seu perfil.'},403);
   const now=new Date().toISOString();
@@ -27,13 +27,17 @@ async function icmsDebtor(req,env){
     if(!['Analista','Assistente'].includes(u.profile))return json({error:'Somente analista ou assistente pode solicitar a transferência de crédito.'},403);
     const existing=await env.DB.prepare('SELECT * FROM icms_debtor_requests WHERE store_id=?1 AND competence_period=?2').bind(storeId,p).first();
     if(existing?.status==='aguardando_transferencia')return json({ok:true,status:existing.status});
+    if(existing?.status==='solicitacao_indev'){
+      await env.DB.prepare("UPDATE icms_debtor_requests SET status='aguardando_transferencia',requested_by=?1,requested_at=?2,resolved_by=NULL,resolved_at=NULL WHERE store_id=?3 AND competence_period=?4").bind(u.id,now,storeId,p).run();
+      return json({ok:true,status:'aguardando_transferencia'});
+    }
     if(existing)return json({error:'Esta solicitação de ICMS já foi decidida.'},409);
     await env.DB.prepare("INSERT INTO icms_debtor_requests(store_id,competence_period,status,requested_by,requested_at) VALUES(?1,?2,'aguardando_transferencia',?3,?4)").bind(storeId,p,u.id,now).run();
     try{await env.DB.prepare("INSERT INTO history(user_id,entity_type,entity_id,action,description) VALUES(?1,'icms_debtor',?2,'REQUEST',?3)").bind(u.id,storeId,`Loja devedora, aguardando transferência de crédito · ICMS · ${u.name}`).run()}catch{}
     return json({ok:true,status:'aguardando_transferencia'});
   }
   if(!CONTROL_PROFILES.includes(u.profile))return json({error:'Somente gerente, coordenador ou desenvolvedor podem decidir esta solicitação.'},403);
-  const decision=action==='approve'?'transferencia_aprovada':'finalizada_devedora';
+  const decision=action==='approve'?'transferencia_aprovada':action==='finalize_debtor'?'finalizada_devedora':'solicitacao_indev';
   const existing=await env.DB.prepare('SELECT * FROM icms_debtor_requests WHERE store_id=?1 AND competence_period=?2').bind(storeId,p).first();
   if(!existing)return json({error:'Não existe solicitação de loja devedora para esta loja.'},404);
   if(existing.status!=='aguardando_transferencia')return json({error:'Esta solicitação já foi decidida.'},409);
