@@ -51,19 +51,22 @@ async function saveIssDeadline(request,env,user){
   return json({ok:true,data:await env.DB.prepare('SELECT id,state,city,due_day,updated_at FROM iss_deadlines WHERE state=?1 AND city=?2').bind(s,city).first()});
 }
 async function state(env,user){
+  await ensureDeadlineSchema(env);
   const period=new Date().toISOString().slice(0,7);
   const ownerUserId=['Analista','Assistente'].includes(user.profile)?user.id:null;
-  const [analysts,stores,execs,deadlines,history]=await Promise.all([
+  const [analysts,stores,execs,deadlines,history,taxDeadlinesData,issDeadlinesData]=await Promise.all([
     env.DB.prepare(`SELECT u.id,u.name,tm.seniority AS level,'Ativo' AS status FROM users u JOIN profiles p ON p.id=u.profile_id LEFT JOIN team_members tm ON tm.user_id=u.id WHERE u.status='active' AND p.name='Analista' ORDER BY u.name`).all(),
     storesQuery(env,ownerUserId),
     env.DB.prepare(`SELECT o.id,o.store_id,o.name AS obligation,o.status,o.updated_at,o.responsible_user_id FROM obligations o WHERE o.competence_period=?1`).bind(period).all(),
     env.DB.prepare(`SELECT d.id,o.name AS obligation,d.due_date,d.status FROM deadlines d JOIN obligations o ON o.id=d.obligation_id WHERE o.competence_period=?1 ORDER BY d.due_date`).bind(period).all(),
+    taxDeadlines(env),
+    issDeadlines(env),
     env.DB.prepare(`SELECT id,entity_type,entity_id,action,description,created_at FROM history ORDER BY created_at DESC LIMIT 100`).all()
   ]);
   let visibleStores=stores;
   const visibleIds=new Set(visibleStores.map(s=>String(s.id)));
   const executions=(execs.results||[]).filter(x=>visibleIds.has(String(x.store_id)));
-  return json({user,analysts:analysts.results||[],stores:visibleStores,executions,deadlines:deadlines.results||[],history:history.results||[],obligations:TAX});
+  return json({user,analysts:analysts.results||[],stores:visibleStores,executions,deadlines:deadlines.results||[],tax_deadlines:taxDeadlinesData,iss_deadlines:issDeadlinesData,history:history.results||[],obligations:TAX});
 }
 async function updateExecution(request,env,user){
   const b=await request.json().catch(()=>null); const storeId=Number(b?.store_id); const obligation=String(b?.obligation||''); const status=String(b?.status||'');
@@ -166,6 +169,8 @@ async function api(request,env){
     if(path==='/api/state'&&request.method==='GET'){await audit(env,user,request,'read_state');return state(env,user)}
     if(path==='/api/executions'&&request.method==='PUT')return updateExecution(request,env,user);
     if(path==='/api/stores'&&request.method==='GET'){const s=await storesQuery(env);return json({data:s});}
+    if(path==='/api/tax-deadlines'&&request.method==='PUT')return saveTaxDeadline(request,env,user);
+    if(path==='/api/iss-deadlines'&&request.method==='PUT')return saveIssDeadline(request,env,user);
     if(path==='/api/stores'&&request.method==='POST')return createStore(request,env,user);
     if(path.startsWith('/api/stores/')&&request.method==='PUT')return updateStore(request,env,user);
     if(path==='/api/dashboard'&&request.method==='GET'){
