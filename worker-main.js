@@ -1,4 +1,4 @@
-// Deploy trigger: checklist ICMS corrigido e autenticado.
+// Deploy trigger: checklist ICMS — item 8 Contabilização e opções da Curva ABC.
 import baseWorker from './status-flow-worker-fixed.js';
 import { handlePasswordReset } from './src/password-reset.js';
 import { handleAuthRuntime } from './src/auth-runtime.js';
