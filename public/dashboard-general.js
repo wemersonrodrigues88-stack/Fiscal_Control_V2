@@ -16,7 +16,9 @@ let running=false,observer=null;
 async function activate(){if(running)return;if(typeof state!=='undefined'&&state.page!=='dashboard')return;const c=document.querySelector('#content'),title=document.querySelector('#page-title');if(!c||!title)return;running=true;title.textContent=TITLE;const nav=document.querySelector('[data-page="dashboard"]');if(nav)nav.textContent='Geral';const initial=fallback();render(initial);try{const data=await getData();if(typeof state==='undefined'||state.page==='dashboard')render(data)}finally{running=false}}
 window.dashboard=function(){activate()};
 function boot(){if(observer){observer.disconnect();observer=null}activate()}
-if(document.readyState==='loading'){observer=new MutationObserver(()=>{if(document.querySelector('#content'))boot()});observer.observe(document.documentElement,{childList:true,subtree:true})}else boot();
+/* O Dashboard principal já é renderizado por app.js. Não inicializar este aprimoramento automaticamente,
+   pois isso criava uma disputa de renderização na entrada/atualização e fazia a tela "Carregando..." piscar. */
+observer=null;
 
 /* Corrige somente a abertura do Checklist: a janela é exibida imediatamente,
    sem esperar a leitura do banco. O conteúdo e as opções permanecem iguais. */
