@@ -46,15 +46,17 @@ function render(c,d){isControl()?manager(c,d):analyst(c,d)}
 load().then(d=>render(c,d)).catch(e=>{c.innerHTML=`<div class="error">${esc(e.message)}</div>`});
 }
 function carteiras(c){
-  const s=['Gestão','Desenvolvedor','Coordenador'].includes(state.user.profile)?stores():assigned(state.user.name);
-  const canEdit=['Gestão','Coordenador','Desenvolvedor'].includes(state.user.profile);
+  const all=['Gestão','Desenvolvedor','Coordenador'].includes(state.user.profile)?stores():assigned(state.user.name);
+  const canEdit=['Gestão','Desenvolvedor','Coordenador'].includes(state.user.profile);
+  const states=[...new Set(all.map(x=>String(x.state||'').trim()).filter(Boolean))].sort();
+  const cities=[...new Set(all.map(x=>String(x.city||'').trim()).filter(Boolean))].sort((a,b)=>a.localeCompare(b,'pt-BR'));
+  const names=[...new Set(all.map(x=>String(x.analyst||'').trim()).filter(Boolean))].sort((a,b)=>a.localeCompare(b,'pt-BR'));
   const cols=[['number','Número'],['name','Loja'],['state','Estado'],['document','CNPJ'],['analyst','Analista'],['state_registration','Inscrição Estadual'],['municipal_registration','Inscrição Municipal']];
   if(canEdit)cols.push(['_edit','Ação']);
-  const headerActions=canEdit?'<button class="primary" id="new-store">+ Nova loja</button>':'';
-  const renderRows=s.map(r=>'<tr>'+cols.map(x=>x[0]==='_edit'?'<td><button class="badge blue edit-store" data-id="'+r.id+'">Editar</button></td>':'<td>'+(x[0]==='name'&&canEdit?'<button type="button" class="store-name-click" data-id="'+r.id+'" style="background:none;border:0;padding:0;margin:0;font:inherit;color:inherit;text-align:left;cursor:pointer">'+esc(r.name)+'</button>':esc(r[x[0]]??'—'))+'</td>').join('')+'</tr>').join('');
-  c.innerHTML='<div class="section-title"><div><p class="muted">Cadastro completo das lojas e vínculo com o analista.</p></div>'+headerActions+'</div>'+(s.length?'<div class="table-wrap"><table><thead><tr>'+cols.map(x=>'<th>'+x[1]+'</th>').join('')+'</tr></thead><tbody>'+renderRows+'</tbody></table></div>':'<div class="card empty">Nenhuma loja cadastrada.</div>');
-  c.querySelectorAll('.edit-store,.store-name-click').forEach(b=>b.onclick=()=>openStoreEditor(c,s.find(x=>String(x.id)===b.dataset.id)));
-  c.querySelector('#new-store')?.addEventListener('click',()=>openStoreEditor(c,null));
+  const opt=v=>'<option value="'+esc(v)+'">'+esc(v)+'</option>';
+  c.innerHTML='<div class="section-title"><div><p class="muted">Cadastro completo das lojas e vínculo com o analista.</p></div>'+(canEdit?'<button class="primary" id="new-store">+ Nova loja</button>':'')+'</div><div class="card" style="margin-bottom:16px"><div class="form-grid" style="grid-template-columns:repeat(3,minmax(160px,1fr));gap:12px"><div class="field"><label>Estado</label><select id="filter-state"><option value="">Todos os estados</option>'+states.map(opt).join('')+'</select></div><div class="field"><label>Cidade</label><select id="filter-city"><option value="">Todas as cidades</option>'+cities.map(opt).join('')+'</select></div><div class="field"><label>Analista</label><select id="filter-analyst"><option value="">Todos os analistas</option>'+names.map(opt).join('')+'</select></div></div></div><div id="stores-table"></div>';
+  const render=()=>{const fs=c.querySelector('#filter-state').value,fc=c.querySelector('#filter-city').value,fa=c.querySelector('#filter-analyst').value;const rows=all.filter(r=>(!fs||String(r.state||'')===fs)&&(!fc||String(r.city||'')===fc)&&(!fa||String(r.analyst||'')===fa));const body=rows.map(r=>'<tr>'+cols.map(x=>x[0]==='_edit'?'<td><button class="badge blue edit-store" data-id="'+r.id+'">Editar</button></td>':'<td>'+(x[0]==='name'&&canEdit?'<button type="button" class="store-name-click" data-id="'+r.id+'" style="background:none;border:0;padding:0;margin:0;font:inherit;color:inherit;text-align:left;cursor:pointer">'+esc(r.name)+'</button>':esc(r[x[0]]||'—'))+'</td>').join('')+'</tr>').join('');c.querySelector('#stores-table').innerHTML=rows.length?'<div class="table-wrap"><table><thead><tr>'+cols.map(x=>'<th>'+x[1]+'</th>').join('')+'</tr></thead><tbody>'+body+'</tbody></table></div>':'<div class="card empty">Nenhuma loja encontrada para os filtros selecionados.</div>';c.querySelectorAll('.edit-store,.store-name-click').forEach(b=>b.onclick=()=>openStoreEditor(c,all.find(x=>String(x.id)===b.dataset.id)));};
+  ['#filter-state','#filter-city','#filter-analyst'].forEach(s=>c.querySelector(s).addEventListener('change',render));c.querySelector('#new-store')?.addEventListener('click',()=>openStoreEditor(c,null));render();
 }
 async function openStoreEditor(c,store){
   const options=await api('/api/team');
@@ -88,8 +90,7 @@ async function openStoreEditor(c,store){
     if(issDueDay!==null&&(!Number.isInteger(issDueDay)||issDueDay<1||issDueDay>31)){alert('O vencimento do ISS deve ser um dia entre 1 e 31.');btn.disabled=false;btn.textContent=submitText;return}
     try{
       const payload={number:document.querySelector('#store-number').value.trim(),name:document.querySelector('#store-name').value.trim(),document:document.querySelector('#store-document').value.trim(),state:uf,address,street,address_number:addressNumber,complement,neighborhood,city,state_registration:document.querySelector('#store-ie').value.trim(),municipal_registration:document.querySelector('#store-im').value.trim(),iss_due_day:issDueDay,analyst_id:document.querySelector('#store-analyst').value||null};
-      await api(isNew?'/api/stores':'/api/stores/'+store.id,{method:isNew?'POST':'PUT',body:JSON.stringify(payload)});
-      state.data=await api('/api/state');state.page='carteiras';await loadPage();
+      const saved=await api(isNew?'/api/stores':'/api/stores/'+store.id,{method:isNew?'POST':'PUT',body:JSON.stringify(payload)});const savedStore=saved.data;if(savedStore){const list=state.data.stores||[];const idx=list.findIndex(x=>String(x.id)===String(savedStore.id));if(idx>=0)list[idx]=savedStore;else list.push(savedStore);state.data.stores=list;}state.page='carteiras';carteiras(c);
     }catch(err){alert(err.message);btn.disabled=false;btn.textContent=submitText}
   };
 }
