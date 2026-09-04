@@ -21,6 +21,7 @@ async function ensureStoreSchema(env){
   }
 }
 async function storesQuery(env,ownerUserId=null){
+  await ensureStoreSchema(env);
   let sql=`SELECT s.id,s.code AS number,s.name,s.document AS document,s.address,s.street,s.address_number,s.complement,s.neighborhood,s.city,s.state,s.state_registration,s.municipal_registration,s.iss_due_day,COALESCE(u.name,'') AS analyst FROM stores s LEFT JOIN portfolio_stores ps ON ps.store_id=s.id LEFT JOIN portfolios p ON p.id=ps.portfolio_id LEFT JOIN users u ON u.id=p.owner_user_id AND u.status='active' WHERE s.status='active'`;
   const params=[];
   if(ownerUserId!==null){sql+=` AND EXISTS (SELECT 1 FROM portfolio_stores ps2 JOIN portfolios p2 ON p2.id=ps2.portfolio_id WHERE ps2.store_id=s.id AND p2.owner_user_id=?1)`;params.push(ownerUserId)}
