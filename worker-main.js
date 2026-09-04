@@ -1,3 +1,4 @@
+// Deploy trigger: checklist ICMS corrigido e autenticado.
 import baseWorker from './status-flow-worker-fixed.js';
 import { handlePasswordReset } from './src/password-reset.js';
 import { handleAuthRuntime } from './src/auth-runtime.js';
