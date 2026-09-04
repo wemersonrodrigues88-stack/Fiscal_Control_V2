@@ -2,7 +2,7 @@ import baseWorker from './worker.js';
 
 const TAXES=['ICMS','PIS/COFINS','ISS','SPED ICMS','Fronteiras'];
 const CONTROL_PROFILES=['Gestão','Gerente','Coordenador','Desenvolvedor'];
-const FLOW={Gerando:'Gerando',Query:'Query geradas',Analisando:'Analisando',Finalizando:'Finalizando'};
+const FLOW={Gerando:'Gerando',Query:'Query',Analisando:'Analisando',Finalizando:'Finalizado'};
 const CHECK_ITEMS=['quebra_sequencia','painel_inconsistencia','notas_baixa_estoque','curva_abc','ajustes_credito_debito','registro_resumo_icms','controle_fechado','contabilizacao'];
 const CHECK_ALLOWED={quebra_sequencia:['feito','ha_quebras'],painel_inconsistencia:['feito'],notas_baixa_estoque:['feito'],curva_abc:['feito','incons_comercial','incons_contabil'],ajustes_credito_debito:['feito'],registro_resumo_icms:['feito'],controle_fechado:['feito'],contabilizacao:['feito']};
 function json(data,status=200){return new Response(JSON.stringify(data),{status,headers:{'content-type':'application/json; charset=UTF-8','cache-control':'no-store'}})}
