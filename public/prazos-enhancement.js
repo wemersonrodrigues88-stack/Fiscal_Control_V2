@@ -1,83 +1,138 @@
-/* Ajuste visual da tela Prazos:
-   após salvar um estado, mantém "Prazo salvo" e disponibiliza "Alterar prazo".
-   Não altera a API nem a persistência dos prazos. */
+/* Prazos — estado salvo por UF.
+   Regra: digitar -> Salvar prazos UF -> "Prazo salvo" fica visível.
+   "Alterar prazo" libera novamente os campos daquela UF.
+   Aplica-se a TODOS os estados exibidos, sem alterar a API/persistência.
+*/
 (function(){
   'use strict';
 
-  const LOCK_CLASS = 'prazos-salvos-lock';
-  const MARKER = 'data-prazo-salvo';
+  const CARD = '.deadline-state-card';
+  const INPUT = '.deadline-input';
+  const SAVE = '.save-state-deadlines';
+  const EDIT = '.alterar-state-deadlines';
+  const SAVED = 'data-prazo-salvo';
 
-  function inputsFor(card){
-    return Array.from(card.querySelectorAll('.deadline-input'));
+  function inputs(card){
+    return Array.from(card.querySelectorAll(INPUT));
   }
 
-  function ensureSavedUi(card){
-    if(!card) return;
-    const saveBtn = card.querySelector('.save-state-deadlines');
-    if(!saveBtn) return;
+  function hasSavedValue(card){
+    return inputs(card).some(input => String(input.value ?? '').trim() !== '');
+  }
 
-    const inputs = inputsFor(card);
-    card.setAttribute(MARKER, 'true');
-    inputs.forEach(input => {
-      input.disabled = true;
-      input.classList.add(LOCK_CLASS);
-    });
+  function stateName(card){
+    return String(card?.dataset?.state || '').trim().toUpperCase();
+  }
 
-    saveBtn.disabled = false;
-    saveBtn.textContent = 'Prazo salvo';
-    saveBtn.dataset.prazoSaved = 'true';
-    saveBtn.classList.add('prazos-salvos');
+  function restoreSaveButton(card){
+    const btn = card?.querySelector(SAVE);
+    if(!btn) return;
+    const uf = stateName(card);
+    btn.textContent = 'Salvar prazos ' + uf;
+    btn.disabled = false;
+    btn.dataset.prazoSaved = 'false';
+    btn.classList.remove('prazos-salvos');
+  }
 
-    if(card.querySelector('.alterar-state-deadlines')) return;
+  function addEditButton(card){
+    const save = card?.querySelector(SAVE);
+    if(!save || card.querySelector(EDIT)) return;
 
-    const editBtn = document.createElement('button');
-    editBtn.type = 'button';
-    editBtn.className = 'secondary alterar-state-deadlines';
-    editBtn.textContent = 'Alterar prazo';
-    editBtn.dataset.state = card.dataset.state || '';
-    saveBtn.insertAdjacentElement('afterend', editBtn);
+    const edit = document.createElement('button');
+    edit.type = 'button';
+    edit.className = 'secondary alterar-state-deadlines';
+    edit.textContent = 'Alterar prazo';
+    edit.dataset.state = stateName(card);
 
-    editBtn.addEventListener('click', function(){
-      inputsFor(card).forEach(input => {
+    save.insertAdjacentElement('afterend', edit);
+
+    edit.addEventListener('click', function(){
+      inputs(card).forEach(input => {
         input.disabled = false;
-        input.classList.remove(LOCK_CLASS);
+        input.removeAttribute('data-saved-value');
       });
-      saveBtn.textContent = 'Salvar prazos ' + (card.dataset.state || '');
-      saveBtn.dataset.prazoSaved = 'false';
-      saveBtn.classList.remove('prazos-salvos');
-      card.removeAttribute(MARKER);
-      editBtn.remove();
+
+      card.removeAttribute(SAVED);
+      restoreSaveButton(card);
+      edit.remove();
+
+      const first = inputs(card).find(input => !input.disabled);
+      if(first) first.focus();
     });
   }
 
-  function watchButtons(){
-    document.querySelectorAll('.save-state-deadlines').forEach(btn => {
-      if(btn.dataset.prazoHooked === 'true') return;
-      btn.dataset.prazoHooked = 'true';
+  function setSaved(card){
+    const save = card?.querySelector(SAVE);
+    if(!save) return;
+
+    const uf = stateName(card);
+    card.setAttribute(SAVED, 'true');
+
+    inputs(card).forEach(input => {
+      input.disabled = true;
+      input.dataset.savedValue = input.value ?? '';
+    });
+
+    save.disabled = false;
+    save.textContent = 'Prazo salvo';
+    save.dataset.prazoSaved = 'true';
+    save.classList.add('prazos-salvos');
+
+    addEditButton(card);
+  }
+
+  function markExistingSavedStates(){
+    document.querySelectorAll(CARD).forEach(card => {
+      if(card.hasAttribute(SAVED)) return;
+      if(hasSavedValue(card)) setSaved(card);
+    });
+  }
+
+  function protectAutoSave(){
+    /*
+      O app original também possui salvamento por blur/change.
+      Bloqueamos somente esses dois eventos nos campos de prazo para
+      manter o fluxo solicitado: salvar exclusivamente pelo botão da UF.
+    */
+    document.addEventListener('change', function(event){
+      if(event.target?.matches?.(INPUT)){
+        event.stopImmediatePropagation();
+      }
+    }, true);
+
+    document.addEventListener('blur', function(event){
+      if(event.target?.matches?.(INPUT)){
+        event.stopImmediatePropagation();
+      }
+    }, true);
+  }
+
+  function observeSaveConfirmation(){
+    const observer = new MutationObserver(function(){
+      document.querySelectorAll(CARD).forEach(card => {
+        const save = card.querySelector(SAVE);
+        if(!save) return;
+
+        const text = save.textContent.trim().toLowerCase();
+        if(text === 'prazos ' + stateName(card).toLowerCase() + ' salvos'){
+          setSaved(card);
+        }
+      });
+
+      markExistingSavedStates();
+    });
+
+    observer.observe(document.body, {
+      childList: true,
+      characterData: true,
+      subtree: true
     });
   }
 
   function init(){
-    watchButtons();
-
-    const observer = new MutationObserver(function(){
-      watchButtons();
-      document.querySelectorAll('.save-state-deadlines').forEach(btn => {
-        const card = btn.closest('.deadline-state-card');
-        if(!card) return;
-
-        const text = btn.textContent.trim().toLowerCase();
-        const state = (card.dataset.state || '').toLowerCase();
-
-        if(text === ('prazos ' + state + ' salvos')){
-          ensureSavedUi(card);
-        }else if(card.getAttribute(MARKER) === 'true' && text === ('salvar prazos ' + state)){
-          ensureSavedUi(card);
-        }
-      });
-    });
-
-    observer.observe(document.body, {childList:true, characterData:true, subtree:true});
+    protectAutoSave();
+    observeSaveConfirmation();
+    markExistingSavedStates();
   }
 
   if(document.readyState === 'loading'){
