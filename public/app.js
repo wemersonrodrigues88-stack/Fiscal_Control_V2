@@ -128,15 +128,31 @@ async function openIssDeadlines(c,uf,iss,canEdit){
     if(!cityMap.has(city))cityMap.set(city,[]);
     cityMap.get(city).push(s);
   });
+  const configured=new Map((iss||[]).filter(x=>String(x.state||'').toUpperCase()===uf).map(x=>[String(x.city||'').trim().toUpperCase(),x]));
   const list=[...cityMap.keys()].sort((a,b)=>a.localeCompare(b,'pt-BR'));
-  const html=list.map(city=>{
-    const items=cityMap.get(city),days=[...new Set(items.map(s=>s.iss_due_day).filter(v=>v!==null&&v!==undefined&&v!==''))];
-    const value=days.length===1?('Dia '+days[0]):(days.length>1?'Conferir cadastro das lojas':'Não informado');
-    return '<div class="metric" style="gap:12px"><span>'+esc(city)+'</span><strong>'+esc(value)+'</strong></div>';
-  }).join('');
-  const modal=document.createElement('div');modal.className='modal-backdrop';modal.innerHTML='<div class="card" style="max-width:700px;width:92%;max-height:80vh;overflow:auto"><div class="title"><h3>ISS — '+uf+'</h3><button type="button" id="close-iss">Fechar</button></div><p class="muted">Os municípios são incluídos exclusivamente no cadastro das lojas em Carteiras. O vencimento do ISS também deve ser informado no cadastro da loja. Esta tela é somente para consulta.</p><div id="iss-list">'+(html||'<div class="empty">Nenhuma cidade cadastrada para este estado.</div>')+'</div></div>';
+  const row=city=>{
+    const key=city.toUpperCase(),saved=configured.get(key),items=cityMap.get(city);
+    const storeDays=[...new Set(items.map(s=>s.iss_due_day).filter(v=>v!==null&&v!==undefined&&v!==''))];
+    const value=saved?.due_day??(storeDays.length===1?storeDays[0]:'');
+    return '<div class="metric" style="gap:12px;align-items:center"><span>'+esc(city)+'</span><div style="display:flex;gap:8px;align-items:center">'+(canEdit?'<input class="iss-day" data-city="'+esc(city)+'" type="number" min="1" max="31" step="1" value="'+esc(value)+'" placeholder="Dia" style="width:90px"><button type="button" class="primary iss-save" data-city="'+esc(city)+'">Salvar</button>':'<strong>'+(value?'Dia '+esc(value):'Não informado')+'</strong>')+'</div></div>';
+  };
+  const modal=document.createElement('div');modal.className='modal-backdrop';modal.innerHTML='<div class="card" style="max-width:760px;width:92%;max-height:80vh;overflow:auto"><div class="title"><h3>ISS — '+uf+'</h3><button type="button" id="close-iss">Fechar</button></div><p class="muted">Os municípios são definidos exclusivamente no cadastro das lojas em Carteiras. '+(canEdit?'Aqui você pode incluir ou alterar somente o dia de vencimento dos municípios já cadastrados.':'Consulta dos vencimentos cadastrados.')+'</p><div id="iss-list">'+(list.length?list.map(row).join(''):'<div class="empty">Nenhuma cidade cadastrada para este estado.</div>')+'</div></div>';
   document.body.appendChild(modal);
   modal.querySelector('#close-iss').onclick=()=>modal.remove();
+  modal.querySelectorAll('.iss-save').forEach(btn=>btn.onclick=async()=>{
+    const input=modal.querySelector('.iss-day[data-city="'+CSS.escape(btn.dataset.city)+'"]'),raw=input.value.trim();
+    if(raw!==''&&(Number(raw)<1||Number(raw)>31||!Number.isInteger(Number(raw)))){alert('Informe um dia entre 1 e 31.');return}
+    btn.disabled=true;btn.textContent='Salvando...';
+    try{
+      const res=await api('/api/iss-deadlines',{method:'PUT',body:JSON.stringify({state:uf,city:btn.dataset.city,due_day:raw===''?null:Number(raw)})});
+      const item=res.data,ix=(iss||[]).findIndex(x=>String(x.state).toUpperCase()===uf&&String(x.city).trim().toUpperCase()===btn.dataset.city.trim().toUpperCase());
+      if(ix>=0)iss[ix]=item;else iss.push(item);
+      state.data.iss_deadlines=iss;
+      state.data.stores=(state.data.stores||[]).map(s=>String(s.state||'').toUpperCase()===uf&&String(s.city||'').trim().toUpperCase()===btn.dataset.city.trim().toUpperCase()?{...s,iss_due_day:item.due_day}:s);
+      input.value=item.due_day??'';
+      btn.textContent='Salvo';setTimeout(()=>btn.textContent='Salvar',700);
+    }catch(e){alert(e.message);btn.textContent='Salvar'}finally{btn.disabled=false}
+  });
 }
 
 function managementPage(c){const can=['Gestão','Desenvolvedor'].includes(state.user.profile);c.innerHTML=`<div class="section-title"><div><h2>Gestão da equipe</h2><p class="muted">Acompanhamento individual e administração dos acessos.</p></div>${can?'<button class="primary action-button" id="new-collaborator">+ Novo colaborador</button>':''}</div><div class="grid kpis">${[['Analistas ativos',analysts().length],['Lojas ativas',stores().length],['Conclusão geral',pct(stores())+'%'],['Alertas',(state.data.deadlines||[]).filter(x=>x.status==='late').length],['Carteiras',analysts().filter(a=>assigned(a.name).length).length]].map(x=>`<div class="card kpi"><div class="label">${x[0]}</div><div class="value">${x[1]}</div></div>`).join('')}</div><div class="card section"><div class="title"><h3>Acompanhamento individual</h3><span class="badge blue">Analistas ativos</span></div><div class="grid three">${analysts().map(a=>`<button class="analyst" data-name="${esc(a.name)}"><b>${esc(a.name)}</b><small>${esc(a.level||'')} · ${assigned(a.name).length} lojas · ${pct(assigned(a.name))}%</small></button>`).join('')}</div><div id="individual" class="section"></div></div>`;c.querySelectorAll('.analyst').forEach(b=>b.onclick=()=>{document.querySelectorAll('.analyst').forEach(x=>x.classList.remove('active'));b.classList.add('active');document.querySelector('#individual').innerHTML=table([['number','Loja'],['name','Nome'],['document','CNPJ'],['state','Estado'],['state_registration','Inscrição Estadual'],['municipal_registration','Inscrição Municipal']],assigned(b.dataset.name),'Nenhuma loja vinculada a este analista.')});c.querySelector('#new-collaborator')?.addEventListener('click',async()=>{const options=await api('/api/team/options');renderCollaboratorForm(c,options)})}
