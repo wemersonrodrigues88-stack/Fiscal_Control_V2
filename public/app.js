@@ -182,17 +182,54 @@ async function prazos(c){
   const states=visibleStates.filter(uf=>allStates.includes(uf));
   const taxes=['ICMS','PIS/COFINS','SPED ICMS','Fronteiras'];
   const by=(uf,tax)=>configs.find(x=>String(x.state).toUpperCase()===uf&&x.tax_name===tax)?.due_day??'';
+  const isSaved=uf=>configs.some(x=>String(x.state).toUpperCase()===uf);
 
-  const card=uf=>'<article class="card deadline-state-card" data-state="'+uf+'">'+
-    '<div class="title"><h3>'+uf+'</h3><span class="badge blue">Prazos fiscais</span></div>'+
-    '<div class="form-grid">'+
-    taxes.map(t=>'<div class="field"><label>'+t+'</label><input class="deadline-input" data-state="'+uf+'" data-tax="'+t+'" type="number" min="1" max="31" value="'+esc(by(uf,t))+'" '+(canEdit?'':'disabled')+' placeholder="Dia"></div>').join('')+
-    '<div class="field"><label>ISS</label><button type="button" class="secondary iss-open" data-state="'+uf+'">Ver cidades e vencimentos</button></div>'+
-    (canEdit?'<div class="field deadline-save-field"><label>&nbsp;</label><button type="button" class="primary save-state-deadlines" data-state="'+uf+'">Salvar prazos '+uf+'</button></div>':'')+
-    '</div></article>';
+  const card=uf=>{
+    const saved=isSaved(uf);
+    return '<article class="card deadline-state-card'+(saved?' is-saved':'')+'" data-state="'+uf+'">'+
+      '<div class="deadline-card-head"><div><h3>'+uf+'</h3><p>Vencimentos estaduais</p></div><span class="badge blue">Prazos fiscais</span></div>'+
+      '<div class="deadline-fields">'+
+      taxes.map(t=>'<div class="field"><label>'+t+'</label><input class="deadline-input" data-state="'+uf+'" data-tax="'+t+'" type="number" min="1" max="31" value="'+esc(by(uf,t))+'" '+(canEdit&&!saved?'':'disabled')+' placeholder="Dia"></div>').join('')+
+      '<div class="field"><label>ISS</label><button type="button" class="secondary iss-open" data-state="'+uf+'">Ver cidades e vencimentos</button></div>'+
+      '</div>'+
+      (canEdit?'<div class="deadline-actions">'+
+        '<button type="button" class="primary save-state-deadlines" data-state="'+uf+'" '+(saved?'disabled':'')+'>'+ (saved?'Prazo salvo':'Salvar prazos '+uf) +'</button>'+
+        (saved?'<button type="button" class="secondary alter-state-deadlines" data-state="'+uf+'">Alterar prazo</button>':'')+
+      '</div>':'')+
+    '</article>';
+  };
 
   c.innerHTML='<div class="section-title"><div><h2>Calendário de Prazos</h2><p class="muted">Vencimentos mensais por estado. Gestão, Coordenador e Desenvolvedor podem editar.</p></div></div>'+
-    '<div class="grid two">'+states.map(card).join('')+'</div>';
+    '<div class="grid two deadline-states">'+states.map(card).join('')+'</div>';
+
+  const lockCard=uf=>{
+    const card=c.querySelector('.deadline-state-card[data-state="'+CSS.escape(uf)+'"]');
+    if(!card)return;
+    card.classList.add('is-saved');
+    card.querySelectorAll('.deadline-input').forEach(input=>input.disabled=true);
+    const save=card.querySelector('.save-state-deadlines');
+    if(save){save.disabled=true;save.textContent='Prazo salvo';}
+    if(!card.querySelector('.alter-state-deadlines')){
+      const edit=document.createElement('button');
+      edit.type='button';
+      edit.className='secondary alter-state-deadlines';
+      edit.dataset.state=uf;
+      edit.textContent='Alterar prazo';
+      save?.insertAdjacentElement('afterend',edit);
+      edit.onclick=()=>unlockCard(uf);
+    }
+  };
+
+  const unlockCard=uf=>{
+    const card=c.querySelector('.deadline-state-card[data-state="'+CSS.escape(uf)+'"]');
+    if(!card)return;
+    card.classList.remove('is-saved');
+    card.querySelectorAll('.deadline-input').forEach(input=>input.disabled=!canEdit);
+    const save=card.querySelector('.save-state-deadlines');
+    if(save){save.disabled=false;save.textContent='Salvar prazos '+uf;}
+    card.querySelector('.alter-state-deadlines')?.remove();
+    card.querySelector('.deadline-input:not([disabled])')?.focus();
+  };
 
   const saveState=async(uf,btn)=>{
     const inputs=[...c.querySelectorAll('.deadline-input[data-state="'+CSS.escape(uf)+'"]')];
@@ -223,51 +260,18 @@ async function prazos(c){
         input.value=item?.due_day??'';
         input.dataset.savedValue=item?.due_day??'';
       });
-      btn.textContent='Prazos '+uf+' salvos';
-      setTimeout(()=>{if(btn.isConnected)btn.textContent='Salvar prazos '+uf},1400);
+      lockCard(uf);
     }catch(e){
+      btn.disabled=false;
       btn.textContent='Salvar prazos '+uf;
       alert(e.message);
-    }finally{
-      if(btn.isConnected)btn.disabled=false;
     }
   };
 
-  const saveOne=async(input)=>{
-    const raw=input.value.trim(),uf=input.dataset.state,tax=input.dataset.tax;
-    if(raw!==''&&(Number(raw)<1||Number(raw)>31||!Number.isInteger(Number(raw)))){
-      input.setCustomValidity('Informe um dia inteiro entre 1 e 31.');
-      input.reportValidity();
-      return;
-    }
-    input.setCustomValidity('');
-    const oldValue=input.dataset.savedValue??'';
-    if(raw===oldValue)return;
-    input.disabled=true;
-    try{
-      const res=await api('/api/tax-deadlines',{method:'PUT',body:JSON.stringify({state:uf,tax_name:tax,due_day:raw===''?null:Number(raw)})});
-      const item=res.data;
-      const ix=configs.findIndex(x=>x.state===item.state&&x.tax_name===item.tax_name);
-      if(ix>=0)configs[ix]=item;else configs.push(item);
-      state.data.tax_deadlines=configs;
-      input.value=item.due_day??'';
-      input.dataset.savedValue=item.due_day??'';
-    }catch(e){
-      input.value=oldValue;
-      alert(e.message);
-    }finally{
-      input.disabled=!canEdit;
-    }
-  };
-
-  c.querySelectorAll('.deadline-input').forEach(input=>{
-    input.dataset.savedValue=input.value;
-    input.addEventListener('change',()=>saveOne(input));
-    input.addEventListener('blur',()=>saveOne(input));
-  });
   c.querySelectorAll('.save-state-deadlines').forEach(btn=>{
-    btn.addEventListener('click',()=>saveState(btn.dataset.state,btn));
+    if(!btn.disabled)btn.addEventListener('click',()=>saveState(btn.dataset.state,btn));
   });
+  c.querySelectorAll('.alter-state-deadlines').forEach(btn=>btn.addEventListener('click',()=>unlockCard(btn.dataset.state)));
   c.querySelectorAll('.iss-open').forEach(b=>b.onclick=()=>openIssDeadlines(c,b.dataset.state,iss,canEdit));
 }
 async function openIssDeadlines(c,uf,iss,canEdit){
