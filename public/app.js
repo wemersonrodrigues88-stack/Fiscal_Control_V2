@@ -219,15 +219,37 @@ async function prazos(c){
   c.querySelector('#save-deadlines')?.addEventListener('click',async()=>{
     const btn=c.querySelector('#save-deadlines');
     const inputs=[...c.querySelectorAll('.deadline-input')];
-    btn.disabled=true;btn.textContent='Salvando...';
+    const items=[];
+    for(const input of inputs){
+      const raw=input.value.trim();
+      const day=raw===''?null:Number(raw);
+      if(day!==null&&(!Number.isInteger(day)||day<1||day>31)){
+        input.setCustomValidity('Informe um dia inteiro entre 1 e 31.');
+        input.reportValidity();
+        return;
+      }
+      input.setCustomValidity('');
+      items.push({state:input.dataset.state,tax_name:input.dataset.tax,due_day:day});
+    }
+    btn.disabled=true;
+    btn.textContent='Salvando...';
     try{
-      for(const input of inputs) await saveOne(input);
-      btn.textContent='Salvo';
-      setTimeout(()=>{if(btn.isConnected)btn.textContent='Salvar prazos'},900);
+      const res=await api('/api/tax-deadlines/bulk',{method:'PUT',body:JSON.stringify({items})});
+      const saved=res?.data||[];
+      state.data.tax_deadlines=saved;
+      inputs.forEach(input=>{
+        const item=saved.find(x=>String(x.state)===String(input.dataset.state)&&x.tax_name===input.dataset.tax);
+        input.value=item?.due_day??'';
+        input.dataset.savedValue=item?.due_day??'';
+      });
+      btn.textContent='Prazos salvos';
+      setTimeout(()=>{if(btn.isConnected)btn.textContent='Salvar prazos'},1400);
     }catch(e){
       btn.textContent='Salvar prazos';
       alert(e.message);
-    }finally{btn.disabled=false}
+    }finally{
+      if(btn.isConnected)btn.disabled=false;
+    }
   });
 }
 async function openIssDeadlines(c,uf,iss,canEdit){
