@@ -21,3 +21,7 @@
 .deadline-input:disabled{background:#f8fafc;color:#334155;cursor:default}
 @media(max-width:900px){.deadline-states{grid-template-columns:1fr}}
 @media(max-width:650px){.deadline-fields{grid-template-columns:1fr}.deadline-fields .field:last-child{grid-column:auto}.deadline-actions{flex-direction:column}}
+
+
+/* ICMS - loja devedora: apresentação discreta e menu sob demanda */
+.manager-store-status{position:relative;display:flex;flex-direction:column;align-items:flex-start;gap:3px;min-width:0}.store-name-static{display:flex;flex-direction:column;align-items:flex-start}.store-name-static b{font-size:13px}.store-name-static small{font-size:11px;color:#718096;margin-top:2px}.icms-debtor-status-trigger{border:0;background:transparent;color:#b56a00;font-size:12px;font-weight:600;padding:2px 0;cursor:pointer;text-align:left;line-height:1.35}.icms-debtor-status-trigger:hover{color:#8f5200;text-decoration:underline}.icms-debtor-menu{display:none;position:absolute;left:0;top:calc(100% + 6px);z-index:1300;min-width:255px;background:#fff;border:1px solid #dbe3ef;border-radius:9px;padding:7px;box-shadow:0 10px 24px rgba(15,23,42,.14)}.icms-debtor-menu.open{display:flex;flex-direction:column;gap:3px}.icms-debtor-menu-title{font-size:11px;font-weight:700;color:#667085;padding:5px 8px}.icms-debtor-choice{border:0;background:#fff;color:#172033;text-align:left;padding:8px;border-radius:7px;cursor:pointer;font:inherit;font-size:12px}.icms-debtor-choice:hover{background:#f5f7fa}.icms-debtor-choice:disabled{opacity:.6;cursor:wait}
