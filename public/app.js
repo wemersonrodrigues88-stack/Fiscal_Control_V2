@@ -1,3 +1,4 @@
+/* Fiscal Control — Checklist ICMS v8 publicado: 8 itens. */
 const app = document.querySelector('#app');
 const PASSWORD_ITERATIONS = 120000;
 const TAX = ['ICMS','PIS/COFINS','ISS','SPED ICMS','Fronteiras'];
