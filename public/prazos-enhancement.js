@@ -11,7 +11,7 @@
     return Array.from(card.querySelectorAll('.deadline-input'));
   }
 
-  function setSavedState(card){
+  function ensureSavedUi(card){
     if(!card) return;
     const saveBtn = card.querySelector('.save-state-deadlines');
     if(!saveBtn) return;
@@ -28,10 +28,9 @@
     saveBtn.dataset.prazoSaved = 'true';
     saveBtn.classList.add('prazos-salvos');
 
-    let editBtn = card.querySelector('.alterar-state-deadlines');
-    if(editBtn) return;
+    if(card.querySelector('.alterar-state-deadlines')) return;
 
-    editBtn = document.createElement('button');
+    const editBtn = document.createElement('button');
     editBtn.type = 'button';
     editBtn.className = 'secondary alterar-state-deadlines';
     editBtn.textContent = 'Alterar prazo';
@@ -51,26 +50,34 @@
     });
   }
 
-  function watchSaveButtons(){
+  function watchButtons(){
     document.querySelectorAll('.save-state-deadlines').forEach(btn => {
       if(btn.dataset.prazoHooked === 'true') return;
       btn.dataset.prazoHooked = 'true';
-
-      const observer = new MutationObserver(function(){
-        const text = btn.textContent.trim().toLowerCase();
-        if(text === ('prazos ' + (btn.closest('.deadline-state-card')?.dataset.state || '').toLowerCase() + ' salvos')){
-          observer.disconnect();
-          setSavedState(btn.closest('.deadline-state-card'));
-        }
-      });
-      observer.observe(btn, {childList:true, characterData:true, subtree:true});
     });
   }
 
   function init(){
-    watchSaveButtons();
-    const observer = new MutationObserver(watchSaveButtons);
-    observer.observe(document.body, {childList:true, subtree:true});
+    watchButtons();
+
+    const observer = new MutationObserver(function(){
+      watchButtons();
+      document.querySelectorAll('.save-state-deadlines').forEach(btn => {
+        const card = btn.closest('.deadline-state-card');
+        if(!card) return;
+
+        const text = btn.textContent.trim().toLowerCase();
+        const state = (card.dataset.state || '').toLowerCase();
+
+        if(text === ('prazos ' + state + ' salvos')){
+          ensureSavedUi(card);
+        }else if(card.getAttribute(MARKER) === 'true' && text === ('salvar prazos ' + state)){
+          ensureSavedUi(card);
+        }
+      });
+    });
+
+    observer.observe(document.body, {childList:true, characterData:true, subtree:true});
   }
 
   if(document.readyState === 'loading'){
