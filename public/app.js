@@ -68,7 +68,6 @@ function historico(c){
   const stats=[
     ['Entregas no prazo',rows.filter(r=>r.result==='No prazo'||r.result.startsWith('Antecipado')).length],
     ['Atrasos',rows.filter(r=>r.delay>0).length],
-    ['Em andamento',rows.filter(r=>r.result==='Em andamento').length],
     ['Pendentes',rows.filter(r=>r.result==='Pendente').length],
     ['Recorrências de atraso',recurrence.filter(r=>r.lateMonths>=2).length]
   ];
