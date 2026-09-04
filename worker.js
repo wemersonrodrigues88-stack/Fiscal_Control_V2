@@ -38,7 +38,7 @@ async function issDeadlines(env){await ensureDeadlineSchema(env);const r=await e
 async function saveTaxDeadline(request,env,user){
   if(!management(user))return json({error:'Sem permissão para editar prazos.'},403);await ensureDeadlineSchema(env);const b=await request.json().catch(()=>null);
   const s=String(b?.state||'').trim().toUpperCase(),t=String(b?.tax_name||'').trim(),d=b?.due_day===''||b?.due_day===null||b?.due_day===undefined?null:Number(b.due_day);
-  if(!['PE','AL','PB','CE'].includes(s)||!['ICMS','PIS/COFINS','SPED ICMS','Fronteiras'].includes(t))return json({error:'Prazo inválido.'},400);
+  if(!['PE','AL','PB','SP'].includes(s)||!['ICMS','PIS/COFINS','SPED ICMS','Fronteiras'].includes(t))return json({error:'Prazo inválido.'},400);
   if(d!==null&&(!Number.isInteger(d)||d<1||d>31))return json({error:'O vencimento deve ser um dia entre 1 e 31.'},400);
   const now=new Date().toISOString();await env.DB.prepare('INSERT INTO tax_deadlines(state,tax_name,due_day,updated_at) VALUES(?1,?2,?3,?4) ON CONFLICT(state,tax_name) DO UPDATE SET due_day=excluded.due_day,updated_at=excluded.updated_at').bind(s,t,d,now).run();
   return json({ok:true,data:await env.DB.prepare('SELECT id,state,tax_name,due_day,updated_at FROM tax_deadlines WHERE state=?1 AND tax_name=?2').bind(s,t).first()});
