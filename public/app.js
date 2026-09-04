@@ -176,12 +176,62 @@ async function prazos(c){
   const configs=state.data?.tax_deadlines||[];
   const iss=state.data?.iss_deadlines||[];
   const allStates=['PE','AL','PB','SP'];
-  const visibleStates=restricted?[...new Set(assigned(state.user.name).map(s=>String(s.state||'').trim().toUpperCase()).filter(Boolean))]:allStates;
-  const states=visibleStates.length?visibleStates:[];
+  const visibleStates=restricted
+    ? [...new Set(assigned(state.user.name).map(s=>String(s.state||'').trim().toUpperCase()).filter(Boolean))]
+    : allStates;
+  const states=visibleStates.filter(uf=>allStates.includes(uf));
   const taxes=['ICMS','PIS/COFINS','SPED ICMS','Fronteiras'];
-  const by=(uf,tax)=>configs.find(x=>x.state===uf&&x.tax_name===tax)?.due_day??'';
-  const card=uf=>'<article class="card deadline-state-card" data-state="'+uf+'"><div class="title"><h3>'+uf+'</h3><span class="badge blue">Prazos fiscais</span></div><div class="form-grid">'+taxes.map(t=>'<div class="field"><label>'+t+'</label><input class="deadline-input" data-state="'+uf+'" data-tax="'+t+'" type="number" min="1" max="31" value="'+esc(by(uf,t))+'" '+(canEdit?'':'disabled')+' placeholder="Dia"></div>').join('')+'<div class="field"><label>ISS</label><button type="button" class="secondary iss-open" data-state="'+uf+'">Ver cidades e vencimentos</button></div></div></article>';
-  c.innerHTML='<div class="section-title"><div><h2>Calendário de Prazos</h2><p class="muted">Vencimentos mensais por estado. Gestão, Coordenador e Desenvolvedor podem editar.</p></div>'+(canEdit?'<button class="primary" id="save-deadlines">Salvar prazos</button>':'')+'</div><div class="grid two">'+states.map(card).join('')+'</div>';
+  const by=(uf,tax)=>configs.find(x=>String(x.state).toUpperCase()===uf&&x.tax_name===tax)?.due_day??'';
+
+  const card=uf=>'<article class="card deadline-state-card" data-state="'+uf+'">'+
+    '<div class="title"><h3>'+uf+'</h3><span class="badge blue">Prazos fiscais</span></div>'+
+    '<div class="form-grid">'+
+    taxes.map(t=>'<div class="field"><label>'+t+'</label><input class="deadline-input" data-state="'+uf+'" data-tax="'+t+'" type="number" min="1" max="31" value="'+esc(by(uf,t))+'" '+(canEdit?'':'disabled')+' placeholder="Dia"></div>').join('')+
+    '<div class="field"><label>ISS</label><button type="button" class="secondary iss-open" data-state="'+uf+'">Ver cidades e vencimentos</button></div>'+
+    (canEdit?'<div class="field deadline-save-field"><label>&nbsp;</label><button type="button" class="primary save-state-deadlines" data-state="'+uf+'">Salvar prazos '+uf+'</button></div>':'')+
+    '</div></article>';
+
+  c.innerHTML='<div class="section-title"><div><h2>Calendário de Prazos</h2><p class="muted">Vencimentos mensais por estado. Gestão, Coordenador e Desenvolvedor podem editar.</p></div></div>'+
+    '<div class="grid two">'+states.map(card).join('')+'</div>';
+
+  const saveState=async(uf,btn)=>{
+    const inputs=[...c.querySelectorAll('.deadline-input[data-state="'+CSS.escape(uf)+'"]')];
+    const items=[];
+    for(const input of inputs){
+      const raw=input.value.trim();
+      const day=raw===''?null:Number(raw);
+      if(day!==null&&(!Number.isInteger(day)||day<1||day>31)){
+        input.setCustomValidity('Informe um dia inteiro entre 1 e 31.');
+        input.reportValidity();
+        input.focus();
+        return;
+      }
+      input.setCustomValidity('');
+      items.push({state:uf,tax_name:input.dataset.tax,due_day:day});
+    }
+    btn.disabled=true;
+    btn.textContent='Salvando...';
+    try{
+      const res=await api('/api/tax-deadlines/bulk',{method:'PUT',body:JSON.stringify({items})});
+      const saved=res?.data||[];
+      state.data.tax_deadlines=[
+        ...(state.data.tax_deadlines||[]).filter(x=>String(x.state).toUpperCase()!==uf),
+        ...saved.filter(x=>String(x.state).toUpperCase()===uf)
+      ];
+      inputs.forEach(input=>{
+        const item=saved.find(x=>String(x.state).toUpperCase()===uf&&x.tax_name===input.dataset.tax);
+        input.value=item?.due_day??'';
+        input.dataset.savedValue=item?.due_day??'';
+      });
+      btn.textContent='Prazos '+uf+' salvos';
+      setTimeout(()=>{if(btn.isConnected)btn.textContent='Salvar prazos '+uf},1400);
+    }catch(e){
+      btn.textContent='Salvar prazos '+uf;
+      alert(e.message);
+    }finally{
+      if(btn.isConnected)btn.disabled=false;
+    }
+  };
 
   const saveOne=async(input)=>{
     const raw=input.value.trim(),uf=input.dataset.state,tax=input.dataset.tax;
@@ -215,42 +265,10 @@ async function prazos(c){
     input.addEventListener('change',()=>saveOne(input));
     input.addEventListener('blur',()=>saveOne(input));
   });
-  c.querySelectorAll('.iss-open').forEach(b=>b.onclick=()=>openIssDeadlines(c,b.dataset.state,iss,canEdit));
-  c.querySelector('#save-deadlines')?.addEventListener('click',async()=>{
-    const btn=c.querySelector('#save-deadlines');
-    const inputs=[...c.querySelectorAll('.deadline-input')];
-    const items=[];
-    for(const input of inputs){
-      const raw=input.value.trim();
-      const day=raw===''?null:Number(raw);
-      if(day!==null&&(!Number.isInteger(day)||day<1||day>31)){
-        input.setCustomValidity('Informe um dia inteiro entre 1 e 31.');
-        input.reportValidity();
-        return;
-      }
-      input.setCustomValidity('');
-      items.push({state:input.dataset.state,tax_name:input.dataset.tax,due_day:day});
-    }
-    btn.disabled=true;
-    btn.textContent='Salvando...';
-    try{
-      const res=await api('/api/tax-deadlines/bulk',{method:'PUT',body:JSON.stringify({items})});
-      const saved=res?.data||[];
-      state.data.tax_deadlines=saved;
-      inputs.forEach(input=>{
-        const item=saved.find(x=>String(x.state)===String(input.dataset.state)&&x.tax_name===input.dataset.tax);
-        input.value=item?.due_day??'';
-        input.dataset.savedValue=item?.due_day??'';
-      });
-      btn.textContent='Prazos salvos';
-      setTimeout(()=>{if(btn.isConnected)btn.textContent='Salvar prazos'},1400);
-    }catch(e){
-      btn.textContent='Salvar prazos';
-      alert(e.message);
-    }finally{
-      if(btn.isConnected)btn.disabled=false;
-    }
+  c.querySelectorAll('.save-state-deadlines').forEach(btn=>{
+    btn.addEventListener('click',()=>saveState(btn.dataset.state,btn));
   });
+  c.querySelectorAll('.iss-open').forEach(b=>b.onclick=()=>openIssDeadlines(c,b.dataset.state,iss,canEdit));
 }
 async function openIssDeadlines(c,uf,iss,canEdit){
   const cityMap=new Map();
