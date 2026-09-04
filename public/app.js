@@ -18,6 +18,74 @@ function ex(store,tax){return executions().find(x=>String(x.store_id)===String(s
 function pct(arr){const total=arr.length*TAX.length;if(!total)return 0;return Math.round(arr.reduce((n,s)=>n+TAX.filter(t=>ex(s,t)==='Finalizado').length,0)/total*100)}
 function table(columns,rows,empty='Nenhum registro encontrado.'){if(!rows.length)return `<div class="card empty">${empty}</div>`;return `<div class="table-wrap"><table><thead><tr>${columns.map(c=>`<th>${c[1]}</th>`).join('')}</tr></thead><tbody>${rows.map(r=>`<tr>${columns.map(c=>`<td>${esc(r[c[0]]??'—')}</td>`).join('')}</tr>`).join('')}</tbody></table></div>`}
 async function loadPage(){const c=document.querySelector('#content');const title=document.querySelector('#page-title');const titles={dashboard:'Dashboard',apuracoes:'Apurações',carteiras:'Carteiras',prazos:'Prazos',historico:'Histórico',equipe:'Equipe',management:'Gestão'};title.textContent=titles[state.page]||'Fiscal Control';title.style.display=state.page==='apuracoes'?'none':'';c.innerHTML='<div class="card">Carregando...</div>';try{if(state.page==='apuracoes')return apuracoes(c);state.data=await api('/api/state');if(state.page==='dashboard')return dashboard(c);if(state.page==='carteiras')return carteiras(c);if(state.page==='prazos')return prazos(c);if(state.page==='historico')return historico(c);if(state.page==='equipe')return equipe(c);return managementPage(c)}catch(err){if(err.message==='Não autenticado.'){sessionStorage.removeItem('fiscal_token');state.token=null;state.user=null;renderLogin('Sua sessão expirou.');return}c.innerHTML=`<div class="error">${esc(err.message)}</div>`}}
+function historico(c){
+  const s=stores(), exs=executions(), hist=state.data?.history||[], deadlines=state.data?.deadlines||[], taxCfg=state.data?.tax_deadlines||[];
+  const period=new Date().toISOString().slice(0,7);
+  const dateBR=v=>{if(!v)return '—';const d=new Date(v);return isNaN(d)?'—':d.toLocaleDateString('pt-BR')};
+  const dayFor=(store,tax,month=period)=>{
+    if(tax==='ISS'){
+      const x=store.iss_due_day;return x?Number(x):null;
+    }
+    const x=taxCfg.find(z=>String(z.state).toUpperCase()===String(store.state).toUpperCase()&&z.tax_name===tax);
+    return x?.due_day?Number(x.due_day):null;
+  };
+  const dueDate=(store,tax,month=period)=>{
+    const d=dayFor(store,tax,month);if(!d)return null;
+    const [y,m]=month.split('-').map(Number);return new Date(y,m-1,d,23,59,59);
+  };
+  const rows=[];
+  for(const store of s){
+    for(const tax of TAX){
+      const e=exs.find(x=>String(x.store_id)===String(store.id)&&x.obligation===tax);
+      const done=e?.status==='Finalizado'&&e.updated_at;
+      const due=dueDate(store,tax);
+      let result=e?.status==='Finalizado'?'No prazo':(e?.status==='Analisando'?'Em andamento':'Pendente');
+      let delay=0;
+      if(done&&due){delay=Math.floor((new Date(done)-due)/86400000);result=delay>0?'Atrasado '+delay+' dia'+(delay===1?'':'s'):delay<0?'Antecipado '+Math.abs(delay)+' dia'+(Math.abs(delay)===1?'':'s'):'No prazo'}
+      rows.push({store:store.name,tax,analyst:store.analyst||'—',due:due?dateBR(due):'—',delivery:done?dateBR(done):'—',result,delay});
+    }
+  }
+  const delayedHistory={};
+  hist.forEach(h=>{
+    if(h.entity_type!=='execution')return;
+    let d;try{d=JSON.parse(h.description||'{}')}catch{return}
+    if(d.status!=='Finalizado')return;
+    const store=s.find(x=>String(x.id)===String(h.entity_id));if(!store)return;
+    const month=String(h.created_at||'').slice(0,7);if(!month)return;
+    const due=dueDate(store,d.obligation,month);
+    if(due&&new Date(h.created_at)>due){
+      const key=store.id+'|'+d.obligation;
+      (delayedHistory[key]??=[]).push(month);
+    }
+  });
+  const currentDelayed=rows.filter(r=>r.delay>0);
+  const recurrence=currentDelayed.map(r=>{
+    const store=s.find(x=>x.name===r.store);const key=store?.id+'|'+r.tax;
+    const months=[...(delayedHistory[key]||[])];
+    if(r.delay>0&&!months.includes(period))months.push(period);
+    return {...r,lateMonths:[...new Set(months)].sort().length};
+  });
+  const stats=[
+    ['Entregas no prazo',rows.filter(r=>r.result==='No prazo'||r.result.startsWith('Antecipado')).length],
+    ['Atrasos',rows.filter(r=>r.delay>0).length],
+    ['Em andamento',rows.filter(r=>r.result==='Em andamento').length],
+    ['Pendentes',rows.filter(r=>r.result==='Pendente').length],
+    ['Recorrências de atraso',recurrence.filter(r=>r.lateMonths>=2).length]
+  ];
+  const attention=recurrence.filter(r=>r.delay>0||r.lateMonths>=2);
+  c.innerHTML='<div class="section-title"><div><h2>Histórico</h2><p class="muted">Fechamento do período, pontualidade, atrasos e recorrências.</p></div></div>'+
+    cards(stats)+
+    '<div class="card section"><div class="title"><h3>Precisa de atenção</h3><span class="badge '+(attention.length?'red':'blue')+'">'+attention.length+'</span></div>'+
+    (attention.length?'<div class="table-wrap"><table><thead><tr><th>Loja</th><th>Obrigação</th><th>Analista</th><th>Vencimento</th><th>Entrega</th><th>Situação</th><th>Recorrência</th></tr></thead><tbody>'+
+      attention.map(r=>'<tr><td>'+esc(r.store)+'</td><td>'+esc(r.tax)+'</td><td>'+esc(r.analyst)+'</td><td>'+esc(r.due)+'</td><td>'+esc(r.delivery)+'</td><td>'+esc(r.result)+'</td><td>'+(r.lateMonths>=2?'2º mês ou mais com atraso':'1º atraso')+'</td></tr>').join('')+
+      '</tbody></table></div>':'<div class="empty">Nenhuma ocorrência exige atenção neste período.</div>')+
+    '</div>'+
+    '<div class="card section"><div class="title"><h3>Fechamento do mês</h3><span class="badge blue">'+period+'</span></div>'+
+    '<div class="table-wrap"><table><thead><tr><th>Loja</th><th>Obrigação</th><th>Analista</th><th>Vencimento</th><th>Entrega</th><th>Resultado</th></tr></thead><tbody>'+
+    rows.map(r=>'<tr><td>'+esc(r.store)+'</td><td>'+esc(r.tax)+'</td><td>'+esc(r.analyst)+'</td><td>'+esc(r.due)+'</td><td>'+esc(r.delivery)+'</td><td>'+esc(r.result)+'</td></tr>').join('')+
+    '</tbody></table></div></div>';
+}
+
 function dashboard(c){const s=stores(),done=executions().filter(x=>x.status==='Finalizado').length,running=executions().filter(x=>x.status==='Analisando').length,pending=Math.max(0,s.length*TAX.length-done-running);c.innerHTML=`<div class="section-title"><div><h2>Controle Fiscal</h2><p class="muted">Acompanhamento online e centralizado da operação fiscal.</p></div></div>${cards([['Analistas ativos',analysts().length],['Lojas ativas',s.length],['Finalizadas',done],['Em andamento',running],['Pendentes',pending]])}<div class="grid two section"><div class="card"><div class="title"><h3>Obrigações</h3><span class="badge blue">Online</span></div>${TAX.map(t=>{const n=s.filter(x=>ex(x,t)==='Finalizado').length;return `<div class="metric"><span>${t}</span><b>${n}/${s.length}</b></div><div class="progress"><i style="width:${s.length?n/s.length*100:0}%"></i></div>`}).join('')}</div><div class="card"><div class="title"><h3>Analistas</h3></div>${analysts().map(a=>`<div class="metric"><span>${esc(a.name)}</span><b>${pct(assigned(a.name))}%</b></div>`).join('')}</div></div>`}
 function apuracoes(c){
 const TAXES=['ICMS','PIS/COFINS','ISS','SPED ICMS','Fronteiras'];
