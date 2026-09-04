@@ -43,6 +43,35 @@ async function saveTaxDeadline(request,env,user){
   const now=new Date().toISOString();await env.DB.prepare('INSERT INTO tax_deadlines(state,tax_name,due_day,updated_at) VALUES(?1,?2,?3,?4) ON CONFLICT(state,tax_name) DO UPDATE SET due_day=excluded.due_day,updated_at=excluded.updated_at').bind(s,t,d,now).run();
   return json({ok:true,data:await env.DB.prepare('SELECT id,state,tax_name,due_day,updated_at FROM tax_deadlines WHERE state=?1 AND tax_name=?2').bind(s,t).first()});
 }
+async function saveTaxDeadlinesBulk(request,env,user){
+  if(!management(user))return json({error:'Sem permissão para editar prazos.'},403);
+  await ensureDeadlineSchema(env);
+  const b=await request.json().catch(()=>null);
+  const items=Array.isArray(b?.items)?b.items:[];
+  if(!items.length)return json({error:'Nenhum prazo informado.'},400);
+  const allowed=['ICMS','PIS/COFINS','SPED ICMS','Fronteiras'];
+  for(const item of items){
+    const s=String(item?.state||'').trim().toUpperCase();
+    const t=String(item?.tax_name||'').trim();
+    const raw=item?.due_day;
+    const d=raw===''||raw===null||raw===undefined?null:Number(raw);
+    if(!['PE','AL','PB','SP'].includes(s)||!allowed.includes(t))return json({error:'Prazo inválido.'},400);
+    if(d!==null&&(!Number.isInteger(d)||d<1||d>31))return json({error:'O vencimento deve ser um dia entre 1 e 31.'},400);
+  }
+  const now=new Date().toISOString();
+  for(const item of items){
+    const s=String(item.state).trim().toUpperCase();
+    const t=String(item.tax_name).trim();
+    const raw=item.due_day;
+    const d=raw===''||raw===null||raw===undefined?null:Number(raw);
+    await env.DB.prepare('INSERT INTO tax_deadlines(state,tax_name,due_day,updated_at) VALUES(?1,?2,?3,?4) ON CONFLICT(state,tax_name) DO UPDATE SET due_day=excluded.due_day,updated_at=excluded.updated_at').bind(s,t,d,now).run();
+  }
+  const states=['PE','AL','PB','SP'];
+  const placeholders=states.map(()=>'?').join(',');
+  const r=await env.DB.prepare('SELECT id,state,tax_name,due_day,updated_at FROM tax_deadlines WHERE state IN ('+placeholders+') ORDER BY state,tax_name').bind(...states).all();
+  return json({ok:true,data:r.results||[]});
+}
+
 async function saveIssDeadline(request,env,user){
   if(!management(user))return json({error:'Sem permissão para editar prazos.'},403);await ensureDeadlineSchema(env);const b=await request.json().catch(()=>null);
   const s=String(b?.state||'').trim().toUpperCase(),city=String(b?.city||'').trim(),d=b?.due_day===''||b?.due_day===null||b?.due_day===undefined?null:Number(b.due_day);
@@ -171,6 +200,7 @@ async function api(request,env){
     if(path==='/api/executions'&&request.method==='PUT')return updateExecution(request,env,user);
     if(path==='/api/stores'&&request.method==='GET'){const s=await storesQuery(env);return json({data:s});}
     if(path==='/api/tax-deadlines'&&request.method==='PUT')return saveTaxDeadline(request,env,user);
+    if(path==='/api/tax-deadlines/bulk'&&request.method==='PUT')return saveTaxDeadlinesBulk(request,env,user);
     if(path==='/api/iss-deadlines'&&request.method==='PUT')return saveIssDeadline(request,env,user);
     if(path==='/api/stores'&&request.method==='POST')return createStore(request,env,user);
     if(path.startsWith('/api/stores/')&&request.method==='PUT')return updateStore(request,env,user);
