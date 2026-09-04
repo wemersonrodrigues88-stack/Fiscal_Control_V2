@@ -181,7 +181,7 @@ async function prazos(c){
   const taxes=['ICMS','PIS/COFINS','SPED ICMS','Fronteiras'];
   const by=(uf,tax)=>configs.find(x=>x.state===uf&&x.tax_name===tax)?.due_day??'';
   const card=uf=>'<article class="card deadline-state-card" data-state="'+uf+'"><div class="title"><h3>'+uf+'</h3><span class="badge blue">Prazos fiscais</span></div><div class="form-grid">'+taxes.map(t=>'<div class="field"><label>'+t+'</label><input class="deadline-input" data-state="'+uf+'" data-tax="'+t+'" type="number" min="1" max="31" value="'+esc(by(uf,t))+'" '+(canEdit?'':'disabled')+' placeholder="Dia"></div>').join('')+'<div class="field"><label>ISS</label><button type="button" class="secondary iss-open" data-state="'+uf+'">Ver cidades e vencimentos</button></div></div></article>';
-  c.innerHTML='<div class="section-title"><div><h2>Calendário de Prazos</h2><p class="muted">Vencimentos mensais por estado. Gestão, Coordenador e Desenvolvedor podem editar.</p></div></div><div class="grid two">'+states.map(card).join('')+'</div>';
+  c.innerHTML='<div class="section-title"><div><h2>Calendário de Prazos</h2><p class="muted">Vencimentos mensais por estado. Gestão, Coordenador e Desenvolvedor podem editar.</p></div>'+(canEdit?'<button class="primary" id="save-deadlines">Salvar prazos</button>':'')+'</div><div class="grid two">'+states.map(card).join('')+'</div>';
 
   const saveOne=async(input)=>{
     const raw=input.value.trim(),uf=input.dataset.state,tax=input.dataset.tax;
@@ -216,6 +216,19 @@ async function prazos(c){
     input.addEventListener('blur',()=>saveOne(input));
   });
   c.querySelectorAll('.iss-open').forEach(b=>b.onclick=()=>openIssDeadlines(c,b.dataset.state,iss,canEdit));
+  c.querySelector('#save-deadlines')?.addEventListener('click',async()=>{
+    const btn=c.querySelector('#save-deadlines');
+    const inputs=[...c.querySelectorAll('.deadline-input')];
+    btn.disabled=true;btn.textContent='Salvando...';
+    try{
+      for(const input of inputs) await saveOne(input);
+      btn.textContent='Salvo';
+      setTimeout(()=>{if(btn.isConnected)btn.textContent='Salvar prazos'},900);
+    }catch(e){
+      btn.textContent='Salvar prazos';
+      alert(e.message);
+    }finally{btn.disabled=false}
+  });
 }
 async function openIssDeadlines(c,uf,iss,canEdit){
   const cityMap=new Map();
