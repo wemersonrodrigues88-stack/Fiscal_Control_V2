@@ -48,6 +48,7 @@ async function saveIssDeadline(request,env,user){
   const s=String(b?.state||'').trim().toUpperCase(),city=String(b?.city||'').trim(),d=b?.due_day===''||b?.due_day===null||b?.due_day===undefined?null:Number(b.due_day);
   if(!s||!city)return json({error:'Estado e cidade são obrigatórios.'},400);if(d!==null&&(!Number.isInteger(d)||d<1||d>31))return json({error:'O vencimento deve ser um dia entre 1 e 31.'},400);
   const now=new Date().toISOString();await env.DB.prepare('INSERT INTO iss_deadlines(state,city,due_day,updated_at) VALUES(?1,?2,?3,?4) ON CONFLICT(state,city) DO UPDATE SET due_day=excluded.due_day,updated_at=excluded.updated_at').bind(s,city,d,now).run();
+  await ensureStoreSchema(env); await env.DB.prepare('UPDATE stores SET iss_due_day=?1 WHERE UPPER(TRIM(state))=?2 AND UPPER(TRIM(city))=UPPER(TRIM(?3)) AND status=\'active\'').bind(d,s,city).run();
   return json({ok:true,data:await env.DB.prepare('SELECT id,state,city,due_day,updated_at FROM iss_deadlines WHERE state=?1 AND city=?2').bind(s,city).first()});
 }
 async function state(env,user){
