@@ -11,53 +11,44 @@
     return Array.from(card.querySelectorAll('.deadline-input'));
   }
 
-  function setSavedState(card, saved){
+  function setSavedState(card){
     if(!card) return;
     const saveBtn = card.querySelector('.save-state-deadlines');
-    const inputs = inputsFor(card);
     if(!saveBtn) return;
 
-    if(saved){
-      card.setAttribute(MARKER, 'true');
-      inputs.forEach(input => { input.disabled = true; input.classList.add(LOCK_CLASS); });
+    const inputs = inputsFor(card);
+    card.setAttribute(MARKER, 'true');
+    inputs.forEach(input => {
+      input.disabled = true;
+      input.classList.add(LOCK_CLASS);
+    });
 
-      saveBtn.disabled = false;
-      saveBtn.textContent = 'Prazo salvo';
-      saveBtn.dataset.prazoSaved = 'true';
-      saveBtn.classList.add('prazos-salvos');
-
-      let editBtn = card.querySelector('.alterar-state-deadlines');
-      if(!editBtn){
-        editBtn = document.createElement('button');
-        editBtn.type = 'button';
-        editBtn.className = 'secondary alterar-state-deadlines';
-        editBtn.textContent = 'Alterar prazo';
-        editBtn.dataset.state = card.dataset.state || '';
-        saveBtn.insertAdjacentElement('afterend', editBtn);
-
-        editBtn.addEventListener('click', function(){
-          inputsFor(card).forEach(input => {
-            input.disabled = false;
-            input.classList.remove(LOCK_CLASS);
-          });
-          saveBtn.textContent = 'Salvar prazos ' + (card.dataset.state || '');
-          saveBtn.dataset.prazoSaved = 'false';
-          saveBtn.classList.remove('prazos-salvos');
-          card.removeAttribute(MARKER);
-          editBtn.remove();
-        });
-      }
-      return;
-    }
-
-    card.removeAttribute(MARKER);
-    inputs.forEach(input => { input.disabled = false; input.classList.remove(LOCK_CLASS); });
     saveBtn.disabled = false;
-    saveBtn.textContent = 'Salvar prazos ' + (card.dataset.state || '');
-    saveBtn.dataset.prazoSaved = 'false';
-    saveBtn.classList.remove('prazos-salvos');
-    const editBtn = card.querySelector('.alterar-state-deadlines');
-    if(editBtn) editBtn.remove();
+    saveBtn.textContent = 'Prazo salvo';
+    saveBtn.dataset.prazoSaved = 'true';
+    saveBtn.classList.add('prazos-salvos');
+
+    let editBtn = card.querySelector('.alterar-state-deadlines');
+    if(editBtn) return;
+
+    editBtn = document.createElement('button');
+    editBtn.type = 'button';
+    editBtn.className = 'secondary alterar-state-deadlines';
+    editBtn.textContent = 'Alterar prazo';
+    editBtn.dataset.state = card.dataset.state || '';
+    saveBtn.insertAdjacentElement('afterend', editBtn);
+
+    editBtn.addEventListener('click', function(){
+      inputsFor(card).forEach(input => {
+        input.disabled = false;
+        input.classList.remove(LOCK_CLASS);
+      });
+      saveBtn.textContent = 'Salvar prazos ' + (card.dataset.state || '');
+      saveBtn.dataset.prazoSaved = 'false';
+      saveBtn.classList.remove('prazos-salvos');
+      card.removeAttribute(MARKER);
+      editBtn.remove();
+    });
   }
 
   function watchSaveButtons(){
@@ -65,26 +56,20 @@
       if(btn.dataset.prazoHooked === 'true') return;
       btn.dataset.prazoHooked = 'true';
 
-      btn.addEventListener('click', function(){
-        const card = btn.closest('.deadline-state-card');
-        if(!card) return;
-
-        window.setTimeout(function(){
-          if(!btn.isConnected) return;
-          if(btn.textContent.trim().toLowerCase().startsWith('salvar prazos')){
-            setSavedState(card, true);
-          }
-        }, 1700);
-      }, true);
+      const observer = new MutationObserver(function(){
+        const text = btn.textContent.trim().toLowerCase();
+        if(text === ('prazos ' + (btn.closest('.deadline-state-card')?.dataset.state || '').toLowerCase() + ' salvos')){
+          observer.disconnect();
+          setSavedState(btn.closest('.deadline-state-card'));
+        }
+      });
+      observer.observe(btn, {childList:true, characterData:true, subtree:true});
     });
   }
 
   function init(){
     watchSaveButtons();
-
-    const observer = new MutationObserver(function(){
-      watchSaveButtons();
-    });
+    const observer = new MutationObserver(watchSaveButtons);
     observer.observe(document.body, {childList:true, subtree:true});
   }
 
