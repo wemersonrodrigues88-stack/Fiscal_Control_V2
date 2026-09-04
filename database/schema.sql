@@ -181,7 +181,7 @@ CREATE TABLE IF NOT EXISTS icms_debtor_requests (
   store_id INTEGER NOT NULL,
   competence_period TEXT NOT NULL,
   status TEXT NOT NULL DEFAULT 'aguardando_transferencia'
-    CHECK (status IN ('aguardando_transferencia','transferencia_aprovada','finalizada_devedora')),
+    CHECK (status IN ('aguardando_transferencia','transferencia_aprovada','finalizada_devedora','solicitacao_indev')),
   requested_by INTEGER,
   requested_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
   resolved_by INTEGER,
